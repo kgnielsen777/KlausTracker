@@ -50,7 +50,7 @@ class LocationCaptureWorker(
         val motionState = TransitStayClassifier.classifyMotionState(speedKmh)
 
         val repository = TrackerRepository(TrackerDatabaseProvider.database(applicationContext))
-        repository.insertCapture(
+        val captureId = repository.insertCapture(
             latitude = location.latitude,
             longitude = location.longitude,
             accuracyMeters = location.accuracy,
@@ -59,6 +59,10 @@ class LocationCaptureWorker(
             source = "fused",
             enrichmentStatus = "pending",
         )
+
+        val enrichmentDraft = GeocoderLocationEnricher(applicationContext)
+            .enrich(location.latitude, location.longitude)
+        repository.persistCaptureEnrichment(captureId, enrichmentDraft)
 
         return Result.success()
     }

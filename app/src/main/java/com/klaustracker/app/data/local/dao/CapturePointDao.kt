@@ -19,4 +19,7 @@ interface CapturePointDao {
 
     @Query("SELECT COUNT(*) FROM capture_points")
     suspend fun count(): Int
+
+    @Query("UPDATE capture_points SET enrichment_status = :status WHERE id = :capturePointId")
+    suspend fun updateEnrichmentStatus(capturePointId: String, status: String)
 }

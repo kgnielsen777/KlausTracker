@@ -2,9 +2,11 @@ package com.klaustracker.app.data
 
 import com.klaustracker.app.data.local.TrackerDatabase
 import com.klaustracker.app.data.local.entity.CapturePointEntity
+import com.klaustracker.app.data.local.entity.EnrichmentEntity
 import com.klaustracker.app.data.local.entity.PlaceEntity
 import com.klaustracker.app.data.local.entity.StaySegmentEntity
 import com.klaustracker.app.data.local.entity.VisitEntity
+import com.klaustracker.app.tracking.EnrichmentDraft
 import com.klaustracker.app.tracking.CaptureSample
 import com.klaustracker.app.tracking.TransitStayClassifier
 import java.time.Instant
@@ -51,10 +53,11 @@ class TrackerRepository(
         source: String,
         enrichmentStatus: String,
         timestampUtc: String = Instant.now().toString(),
-    ) {
+    ): String {
+        val captureId = UUID.randomUUID().toString()
         database.capturePointDao().upsert(
             CapturePointEntity(
-                id = UUID.randomUUID().toString(),
+                id = captureId,
                 timestampUtc = timestampUtc,
                 latitude = latitude,
                 longitude = longitude,
@@ -67,6 +70,26 @@ class TrackerRepository(
         )
 
         detectAndPersistStayIfNeeded()
+        return captureId
+    }
+
+    suspend fun persistCaptureEnrichment(capturePointId: String, enrichmentDraft: EnrichmentDraft) {
+        database.enrichmentDao().upsert(
+            EnrichmentEntity(
+                id = UUID.randomUUID().toString(),
+                capturePointId = capturePointId,
+                formattedAddress = enrichmentDraft.formattedAddress,
+                poiName = enrichmentDraft.poiName,
+                poiType = enrichmentDraft.poiType,
+                isHotel = enrichmentDraft.isHotel,
+                confidence = enrichmentDraft.confidence,
+                provider = enrichmentDraft.provider,
+                providerTimestampUtc = enrichmentDraft.providerTimestampUtc,
+                status = enrichmentDraft.status,
+            )
+        )
+
+        database.capturePointDao().updateEnrichmentStatus(capturePointId, enrichmentDraft.captureStatus)
     }
 
     private suspend fun detectAndPersistStayIfNeeded() {
