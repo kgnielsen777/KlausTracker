@@ -26,8 +26,8 @@ class TrackerRepository(
     fun observeActivePlaces(): Flow<List<PlaceEntity>> =
         database.placeDao().observeActivePlaces()
 
-    fun observePlaceDurationSummaries(): Flow<List<PlaceDurationSummaryRow>> =
-        database.placeDao().observePlaceDurationSummaries()
+    fun observePlaceDurationSummaries(sinceUtc: String): Flow<List<PlaceDurationSummaryRow>> =
+        database.placeDao().observePlaceDurationSummaries(sinceUtc)
 
     fun observeVisitDetailsForPlace(placeId: String): Flow<List<VisitDetailRow>> =
         database.visitDao().observeVisitDetailsForPlace(placeId)

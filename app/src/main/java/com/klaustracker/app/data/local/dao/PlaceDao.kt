@@ -33,13 +33,13 @@ interface PlaceDao {
             COALESCE(SUM(v.duration_minutes), 0) AS totalDurationMinutes,
             MAX(v.start_utc) AS lastVisitUtc
         FROM places p
-        LEFT JOIN visits v ON v.place_id = p.id
+        LEFT JOIN visits v ON v.place_id = p.id AND v.start_utc >= :sinceUtc
         WHERE p.active = 1
         GROUP BY p.id, p.canonical_name, p.label_type, p.custom_label, p.default_address
         ORDER BY totalDurationMinutes DESC, lastVisitUtc DESC
         """
     )
-    fun observePlaceDurationSummaries(): Flow<List<PlaceDurationSummaryRow>>
+    fun observePlaceDurationSummaries(sinceUtc: String): Flow<List<PlaceDurationSummaryRow>>
 
     @Query(
         """

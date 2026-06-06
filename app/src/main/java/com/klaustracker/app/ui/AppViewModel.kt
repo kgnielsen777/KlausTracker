@@ -10,7 +10,10 @@ import com.klaustracker.app.data.local.entity.PlaceEntity
 import com.klaustracker.app.data.local.model.PlaceDurationSummaryRow
 import com.klaustracker.app.data.local.model.VisitDetailRow
 import com.klaustracker.app.tracking.TrackingScheduler
+import java.time.Instant
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,12 +30,21 @@ data class AppUiState(
     val selectedPlaceId: String? = null,
     val selectedVisitId: String? = null,
     val placeActionMessage: String? = null,
+    val selectedSummaryPeriod: SummaryPeriod = SummaryPeriod.Week,
 )
 
+enum class SummaryPeriod(val label: String, val daysBack: Long) {
+    Day("Day", 1),
+    Week("Week", 7),
+    Month("Month", 30),
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = TrackerRepository(TrackerDatabaseProvider.database(application))
     private val trackingScheduler = TrackingScheduler(application)
     private var visitDetailsJob: Job? = null
+    private val summaryPeriod = MutableStateFlow(SummaryPeriod.Week)
 
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -53,7 +65,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         viewModelScope.launch {
-            repository.observePlaceDurationSummaries().collect { summaries ->
+            summaryPeriod
+                .flatMapLatest { period -> repository.observePlaceDurationSummaries(period.sinceUtc()) }
+                .collect { summaries ->
                 _uiState.update { it.copy(placeSummaries = summaries) }
             }
         }
@@ -137,5 +151,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearPlaceActionMessage() {
         _uiState.update { it.copy(placeActionMessage = null) }
+    }
+
+    fun setSummaryPeriod(period: SummaryPeriod) {
+        summaryPeriod.value = period
+        _uiState.update { it.copy(selectedSummaryPeriod = period) }
+    }
+
+    private fun SummaryPeriod.sinceUtc(): String {
+        return Instant.now().minusSeconds(daysBack * 24 * 60 * 60).toString()
     }
 }

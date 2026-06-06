@@ -119,6 +119,8 @@ fun LocalAppHome(
                 visitDetails = uiState.visitDetails,
                 selectedPlaceId = uiState.selectedPlaceId,
                 selectedVisitId = uiState.selectedVisitId,
+                summaryPeriod = uiState.selectedSummaryPeriod,
+                onSummaryPeriodChange = appViewModel::setSummaryPeriod,
                 onPlaceSelected = appViewModel::selectPlace,
                 onVisitSelected = appViewModel::selectVisit,
             )
@@ -358,6 +360,8 @@ private fun SummaryTab(
     visitDetails: List<com.klaustracker.app.data.local.model.VisitDetailRow>,
     selectedPlaceId: String?,
     selectedVisitId: String?,
+    summaryPeriod: SummaryPeriod,
+    onSummaryPeriodChange: (SummaryPeriod) -> Unit,
     onPlaceSelected: (String) -> Unit,
     onVisitSelected: (String) -> Unit,
 ) {
@@ -367,6 +371,26 @@ private fun SummaryTab(
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
         )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            SummaryPeriod.entries.forEach { candidate ->
+                val selected = candidate == summaryPeriod
+                if (selected) {
+                    Button(onClick = { onSummaryPeriodChange(candidate) }, modifier = Modifier.weight(1f)) {
+                        Text(candidate.label)
+                    }
+                } else {
+                    OutlinedButton(onClick = { onSummaryPeriodChange(candidate) }, modifier = Modifier.weight(1f)) {
+                        Text(candidate.label)
+                    }
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(8.dp))
 
