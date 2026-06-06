@@ -12,6 +12,7 @@ import com.klaustracker.app.data.local.model.PlaceDurationSummaryRow
 import com.klaustracker.app.data.local.model.PlaceSuggestionRow
 import com.klaustracker.app.data.local.model.VisitDetailRow
 import com.klaustracker.app.tracking.EnrichmentDraft
+import com.klaustracker.app.tracking.PlaceSuggestionHeuristics
 import com.klaustracker.app.tracking.CaptureSample
 import com.klaustracker.app.tracking.TransitStayClassifier
 import java.time.Instant
@@ -52,14 +53,15 @@ class TrackerRepository(
                 return@forEach
             }
 
-            val suggestedLabel = inferSuggestedLabel(summary)
+            val visits = database.visitDao().visitsForPlace(summary.placeId)
+            val suggestion = PlaceSuggestionHeuristics.suggest(summary, visits)
             database.placeSuggestionDao().upsert(
                 PlaceSuggestionEntity(
                     id = UUID.randomUUID().toString(),
                     placeId = summary.placeId,
-                    suggestedLabelType = suggestedLabel,
-                    reason = "Frequent repeated stays",
-                    confidence = suggestionConfidence(summary),
+                    suggestedLabelType = suggestion.labelType,
+                    reason = suggestion.reason,
+                    confidence = suggestion.confidence,
                     status = "pending",
                     createdUtc = now,
                     updatedUtc = now,
@@ -318,29 +320,6 @@ class TrackerRepository(
             "custom" -> customLabel ?: currentName
             else -> currentName
         }
-    }
-
-    private fun inferSuggestedLabel(summary: PlaceDurationSummaryRow): String {
-        val text = listOfNotNull(summary.placeName, summary.defaultAddress)
-            .joinToString(" ")
-            .lowercase()
-        return if (
-            text.contains("office") ||
-            text.contains("company") ||
-            text.contains("business") ||
-            text.contains("workspace") ||
-            text.contains("work")
-        ) {
-            "work"
-        } else {
-            "home"
-        }
-    }
-
-    private fun suggestionConfidence(summary: PlaceDurationSummaryRow): Float {
-        val durationScore = (summary.totalDurationMinutes / 600f).coerceAtMost(1f)
-        val visitScore = (summary.visitCount / 10f).coerceAtMost(1f)
-        return (0.5f + (durationScore + visitScore) / 4f).coerceAtMost(0.95f)
     }
 
     companion object {
