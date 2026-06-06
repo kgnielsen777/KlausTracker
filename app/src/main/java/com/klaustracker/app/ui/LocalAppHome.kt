@@ -1,6 +1,7 @@
 package com.klaustracker.app.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -25,14 +28,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlin.math.abs
 
 enum class HomeTab {
     Timeline,
+    Map,
     Places,
     Suggestions,
     Summary,
@@ -110,6 +117,10 @@ fun LocalAppHome(
                 )
             }
 
+            HomeTab.Map -> MapTab(
+                captures = uiState.captures,
+            )
+
             HomeTab.Places -> PlacesTab(
                 places = uiState.places,
                 actionMessage = uiState.placeActionMessage,
@@ -140,6 +151,150 @@ fun LocalAppHome(
                 onAddDemoCapture = appViewModel::addDemoCapture,
             )
         }
+    }
+}
+
+@Composable
+private fun MapTab(
+    captures: List<com.klaustracker.app.data.local.entity.CapturePointEntity>,
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Text(
+            text = "Map",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = "Local projection of captured path with transit and stay overlays.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        if (captures.size < 2) {
+            Text("Need at least 2 captures before rendering map overlays.")
+            return
+        }
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(300.dp),
+        ) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(8.dp),
+            ) {
+                val projected = projectCaptures(
+                    captures = captures,
+                    canvasWidth = size.width,
+                    canvasHeight = size.height,
+                )
+
+                drawRect(color = Color(0xFFF3F6F8))
+
+                for (i in 0 until projected.size - 1) {
+                    val current = projected[i]
+                    val next = projected[i + 1]
+                    drawLine(
+                        color = Color(0xFF8FA1AE),
+                        start = current.point,
+                        end = next.point,
+                        strokeWidth = 2f,
+                    )
+                }
+
+                for (i in 0 until projected.size - 1) {
+                    val current = projected[i]
+                    val next = projected[i + 1]
+                    if (current.bucket == MotionBucket.Transit && next.bucket == MotionBucket.Transit) {
+                        drawLine(
+                            color = Color(0xFFE67E22),
+                            start = current.point,
+                            end = next.point,
+                            strokeWidth = 4f,
+                        )
+                    }
+                }
+
+                projected.forEach { marker ->
+                    val color = when (marker.bucket) {
+                        MotionBucket.Transit -> Color(0xFFE67E22)
+                        MotionBucket.Stay -> Color(0xFF2E7D32)
+                        MotionBucket.Other -> Color(0xFF1976D2)
+                    }
+                    val radius = when (marker.bucket) {
+                        MotionBucket.Transit -> 6f
+                        MotionBucket.Stay -> 7f
+                        MotionBucket.Other -> 5f
+                    }
+                    drawCircle(color = color, radius = radius, center = marker.point)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            MapLegendItem(color = Color(0xFFE67E22), label = "Transit")
+            MapLegendItem(color = Color(0xFF2E7D32), label = "Stay")
+            MapLegendItem(color = Color(0xFF1976D2), label = "Other")
+        }
+    }
+}
+
+@Composable
+private fun MapLegendItem(color: Color, label: String) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .padding(top = 4.dp),
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawCircle(color = color)
+            }
+        }
+        Text(text = label, style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+private data class ProjectedCapture(
+    val point: Offset,
+    val bucket: MotionBucket,
+)
+
+private fun projectCaptures(
+    captures: List<com.klaustracker.app.data.local.entity.CapturePointEntity>,
+    canvasWidth: Float,
+    canvasHeight: Float,
+): List<ProjectedCapture> {
+    val minLat = captures.minOf { it.latitude }
+    val maxLat = captures.maxOf { it.latitude }
+    val minLng = captures.minOf { it.longitude }
+    val maxLng = captures.maxOf { it.longitude }
+
+    val latSpan = if (abs(maxLat - minLat) < 0.00001) 0.00001 else maxLat - minLat
+    val lngSpan = if (abs(maxLng - minLng) < 0.00001) 0.00001 else maxLng - minLng
+
+    val left = 24f
+    val right = 24f
+    val top = 24f
+    val bottom = 24f
+    val width = canvasWidth - left - right
+    val height = canvasHeight - top - bottom
+
+    return captures.map { capture ->
+        val x = (((capture.longitude - minLng) / lngSpan).toFloat() * width) + left
+        val y = (((maxLat - capture.latitude) / latSpan).toFloat() * height) + top
+        ProjectedCapture(
+            point = Offset(x, y),
+            bucket = motionBucket(capture.motionState),
+        )
     }
 }
 
