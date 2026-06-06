@@ -33,6 +33,8 @@ data class AppUiState(
     val periodicCaptureEnabled: Boolean = false,
     val timelineUndoAvailable: Boolean = false,
     val timelineUndoMessage: String? = null,
+    val placeUndoAvailable: Boolean = false,
+    val placeUndoMessage: String? = null,
     val selectedPlaceId: String? = null,
     val selectedVisitId: String? = null,
     val placeActionMessage: String? = null,
@@ -55,6 +57,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
     private var lastDeletedCaptureSnapshot: TrackerRepository.DeletedCaptureSnapshot? = null
+    private var lastDeletedPlaceSnapshot: TrackerRepository.DeletedPlaceSnapshot? = null
 
     init {
         viewModelScope.launch {
@@ -213,6 +216,48 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 )
             }
+        }
+    }
+
+    fun deletePlace(placeId: String) {
+        viewModelScope.launch {
+            val snapshot = repository.deletePlace(placeId)
+            lastDeletedPlaceSnapshot = snapshot
+            _uiState.update {
+                it.copy(
+                    placeUndoAvailable = snapshot != null,
+                    placeUndoMessage = if (snapshot != null) {
+                        "Removed place."
+                    } else {
+                        null
+                    },
+                    placeActionMessage = if (snapshot == null) "Could not remove place." else null,
+                )
+            }
+        }
+    }
+
+    fun undoDeletePlace() {
+        viewModelScope.launch {
+            val snapshot = lastDeletedPlaceSnapshot ?: return@launch
+            repository.restoreDeletedPlace(snapshot)
+            lastDeletedPlaceSnapshot = null
+            _uiState.update {
+                it.copy(
+                    placeUndoAvailable = false,
+                    placeUndoMessage = null,
+                )
+            }
+        }
+    }
+
+    fun dismissPlaceUndo() {
+        lastDeletedPlaceSnapshot = null
+        _uiState.update {
+            it.copy(
+                placeUndoAvailable = false,
+                placeUndoMessage = null,
+            )
         }
     }
 

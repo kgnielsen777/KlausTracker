@@ -1,4 +1,5 @@
 .gradle/
+.kotlin/
 /local.properties
 /.idea/
 .DS_Store
@@ -23,3 +24,9 @@ secrets.properties
 # OS/Editor
 Thumbs.db
 .vscode/
+
+# Local debug artifacts
+/emulator-screen.png
+/phone-map.png
+/places-now.png
+/places-after-fix.png

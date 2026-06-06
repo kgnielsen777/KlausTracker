@@ -35,6 +35,10 @@ class TrackerRepository(
         val enrichment: EnrichmentEntity?,
     )
 
+    data class DeletedPlaceSnapshot(
+        val place: PlaceEntity,
+    )
+
     fun observeRecentCaptures(limit: Int = 20): Flow<List<CapturePointEntity>> =
         database.capturePointDao().observeRecent(limit)
 
@@ -165,6 +169,22 @@ class TrackerRepository(
             database.placeDao().deactivate(source.id, now)
         }
 
+        return true
+    }
+
+    suspend fun deletePlace(placeId: String): DeletedPlaceSnapshot? {
+        val place = database.placeDao().byId(placeId) ?: return null
+        database.placeDao().deactivate(place.id, Instant.now().toString())
+        return DeletedPlaceSnapshot(place)
+    }
+
+    suspend fun restoreDeletedPlace(snapshot: DeletedPlaceSnapshot): Boolean {
+        database.placeDao().upsert(
+            snapshot.place.copy(
+                active = true,
+                updatedUtc = Instant.now().toString(),
+            )
+        )
         return true
     }
 

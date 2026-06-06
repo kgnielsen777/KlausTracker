@@ -187,8 +187,13 @@ fun LocalAppHome(
                     HomeTab.Places -> PlacesTab(
                         places = uiState.places,
                         actionMessage = uiState.placeActionMessage,
+                        undoAvailable = uiState.placeUndoAvailable,
+                        undoMessage = uiState.placeUndoMessage,
                         onRelabelPlace = appViewModel::relabelPlace,
                         onMergePlaces = appViewModel::mergePlaces,
+                        onDeletePlace = appViewModel::deletePlace,
+                        onUndoDelete = appViewModel::undoDeletePlace,
+                        onDismissUndo = appViewModel::dismissPlaceUndo,
                         onDismissMessage = appViewModel::clearPlaceActionMessage,
                     )
 
@@ -713,8 +718,13 @@ private fun formatSpeed(speedKmh: Float?): String {
 private fun PlacesTab(
     places: List<com.klaustracker.app.data.local.entity.PlaceEntity>,
     actionMessage: String?,
+    undoAvailable: Boolean,
+    undoMessage: String?,
     onRelabelPlace: (placeId: String, labelType: String, customLabel: String?) -> Unit,
     onMergePlaces: (sourcePlaceId: String, targetPlaceId: String) -> Unit,
+    onDeletePlace: (String) -> Unit,
+    onUndoDelete: () -> Unit,
+    onDismissUndo: () -> Unit,
     onDismissMessage: () -> Unit,
 ) {
     var selectedPlaceId by remember { mutableStateOf<String?>(null) }
@@ -751,6 +761,31 @@ private fun PlacesTab(
             ) {
                 Text("Dismiss")
             }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        if (undoAvailable) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = undoMessage ?: "Place removed.",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedButton(onClick = onUndoDelete) {
+                        Text("Undo")
+                    }
+                    OutlinedButton(onClick = onDismissUndo) {
+                        Text("Dismiss")
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(8.dp))
         }
 
@@ -847,30 +882,65 @@ private fun PlacesTab(
 
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(places) { place ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            selectedPlaceId = place.id
-                            mergeTargetPlaceId = null
-                            customLabel = place.customLabel ?: ""
-                        },
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(place.canonicalName, style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            text = "Label: ${place.labelType}",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        Text(
-                            text = place.defaultAddress ?: "No address",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        if (selectedPlaceId == place.id) {
+                val dismissState = rememberSwipeToDismissBoxState(
+                    confirmValueChange = { value ->
+                        if (value == SwipeToDismissBoxValue.EndToStart) {
+                            onDeletePlace(place.id)
+                            if (selectedPlaceId == place.id) {
+                                selectedPlaceId = null
+                                mergeTargetPlaceId = null
+                                customLabel = ""
+                            }
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                )
+
+                SwipeToDismissBox(
+                    state = dismissState,
+                    enableDismissFromStartToEnd = false,
+                    backgroundContent = {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 16.dp),
+                        ) {
                             Text(
-                                text = "Selected",
+                                text = "Delete",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.align(androidx.compose.ui.Alignment.CenterEnd),
+                            )
+                        }
+                    },
+                ) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selectedPlaceId = place.id
+                                mergeTargetPlaceId = null
+                                customLabel = place.customLabel ?: ""
+                            },
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(place.canonicalName, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                text = "Label: ${place.labelType}",
                                 style = MaterialTheme.typography.bodySmall,
                             )
+                            Text(
+                                text = place.defaultAddress ?: "No address",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            if (selectedPlaceId == place.id) {
+                                Text(
+                                    text = "Selected",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
                         }
                     }
                 }
