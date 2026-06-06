@@ -1,6 +1,5 @@
 package com.klaustracker.app.data.local
 
-import androidx.room.Room
 import androidx.room.testing.MigrationTestHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -42,23 +41,14 @@ class TrackerDatabaseMigrationTest {
             close()
         }
 
-        helper.runMigrationsAndValidate(
+        val migratedDb = helper.runMigrationsAndValidate(
             dbName,
             2,
             true,
             TrackerDatabase.MIGRATION_1_2,
         )
 
-        val db = Room.databaseBuilder(
-            InstrumentationRegistry.getInstrumentation().targetContext,
-            TrackerDatabase::class.java,
-            dbName,
-        )
-            .addMigrations(TrackerDatabase.MIGRATION_1_2)
-            .allowMainThreadQueries()
-            .build()
-
-        db.openHelper.writableDatabase.query("PRAGMA table_info(capture_points)").use { cursor ->
+        migratedDb.query("PRAGMA table_info(capture_points)").use { cursor ->
             var hasMotionState = false
             while (cursor.moveToNext()) {
                 val columnName = cursor.getString(cursor.getColumnIndexOrThrow("name"))
@@ -69,7 +59,7 @@ class TrackerDatabaseMigrationTest {
             }
             check(hasMotionState) { "Expected motion_state column after migration" }
         }
-        db.close()
+        migratedDb.close()
     }
 
     @Test
@@ -94,23 +84,14 @@ class TrackerDatabaseMigrationTest {
             close()
         }
 
-        helper.runMigrationsAndValidate(
+        val migratedDb = helper.runMigrationsAndValidate(
             dbName,
             3,
             true,
             TrackerDatabase.MIGRATION_2_3,
         )
 
-        val db = Room.databaseBuilder(
-            InstrumentationRegistry.getInstrumentation().targetContext,
-            TrackerDatabase::class.java,
-            dbName,
-        )
-            .addMigrations(TrackerDatabase.MIGRATION_1_2, TrackerDatabase.MIGRATION_2_3)
-            .allowMainThreadQueries()
-            .build()
-
-        db.openHelper.writableDatabase.query("PRAGMA table_info(place_suggestions)").use { cursor ->
+        migratedDb.query("PRAGMA table_info(place_suggestions)").use { cursor ->
             var hasPlaceId = false
             while (cursor.moveToNext()) {
                 val columnName = cursor.getString(cursor.getColumnIndexOrThrow("name"))
@@ -121,6 +102,6 @@ class TrackerDatabaseMigrationTest {
             }
             check(hasPlaceId) { "Expected place_suggestions table with place_id column after migration" }
         }
-        db.close()
+        migratedDb.close()
     }
 }

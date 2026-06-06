@@ -15,4 +15,8 @@ data class VisitDetailRow(
     val centroidLng: Double,
     val radiusMeters: Float,
     val classification: String,
+    val enrichedAddress: String?,
+    val poiName: String?,
+    val poiType: String?,
+    val isHotel: Boolean?,
 )

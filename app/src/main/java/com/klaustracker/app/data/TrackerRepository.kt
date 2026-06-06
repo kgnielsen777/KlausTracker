@@ -13,6 +13,7 @@ import com.klaustracker.app.data.local.model.PlaceSuggestionRow
 import com.klaustracker.app.data.local.model.VisitDetailRow
 import com.klaustracker.app.tracking.EnrichmentDraft
 import com.klaustracker.app.tracking.PlaceSuggestionHeuristics
+import com.klaustracker.app.tracking.GeocoderLocationEnricher
 import com.klaustracker.app.tracking.CaptureSample
 import com.klaustracker.app.tracking.TransitStayClassifier
 import java.time.Instant
@@ -204,9 +205,10 @@ class TrackerRepository(
     }
 
     suspend fun persistCaptureEnrichment(capturePointId: String, enrichmentDraft: EnrichmentDraft) {
+        val existing = database.enrichmentDao().forCapturePoint(capturePointId)
         database.enrichmentDao().upsert(
             EnrichmentEntity(
-                id = UUID.randomUUID().toString(),
+                id = existing?.id ?: UUID.randomUUID().toString(),
                 capturePointId = capturePointId,
                 formattedAddress = enrichmentDraft.formattedAddress,
                 poiName = enrichmentDraft.poiName,
@@ -220,6 +222,26 @@ class TrackerRepository(
         )
 
         database.capturePointDao().updateEnrichmentStatus(capturePointId, enrichmentDraft.captureStatus)
+    }
+
+    suspend fun retryPendingEnrichments(
+        enricher: GeocoderLocationEnricher,
+        limit: Int = ENRICHMENT_RETRY_BATCH_SIZE,
+    ): Int {
+        val candidates = database.capturePointDao().byEnrichmentStatuses(
+            statuses = listOf("pending", "enrichment_failed"),
+            limit = limit,
+        )
+
+        var enrichedCount = 0
+        candidates.forEach { capture ->
+            val enrichmentDraft = enricher.enrich(capture.latitude, capture.longitude)
+            persistCaptureEnrichment(capture.id, enrichmentDraft)
+            if (enrichmentDraft.captureStatus == "enriched") {
+                enrichedCount += 1
+            }
+        }
+        return enrichedCount
     }
 
     private suspend fun detectAndPersistStayIfNeeded() {
@@ -325,6 +347,7 @@ class TrackerRepository(
     companion object {
         private const val RECURRING_MIN_VISITS = 3
         private const val RECURRING_MIN_DURATION_MINUTES = 180
+        private const val ENRICHMENT_RETRY_BATCH_SIZE = 25
     }
 
     private suspend fun ensureDemoPlaceAndVisit(now: String) {

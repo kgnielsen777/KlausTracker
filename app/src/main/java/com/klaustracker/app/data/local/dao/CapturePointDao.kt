@@ -20,6 +20,9 @@ interface CapturePointDao {
     @Query("SELECT COUNT(*) FROM capture_points")
     suspend fun count(): Int
 
+    @Query("SELECT * FROM capture_points WHERE enrichment_status IN (:statuses) ORDER BY timestamp_utc ASC LIMIT :limit")
+    suspend fun byEnrichmentStatuses(statuses: List<String>, limit: Int): List<CapturePointEntity>
+
     @Query("UPDATE capture_points SET enrichment_status = :status WHERE id = :capturePointId")
     suspend fun updateEnrichmentStatus(capturePointId: String, status: String)
 }

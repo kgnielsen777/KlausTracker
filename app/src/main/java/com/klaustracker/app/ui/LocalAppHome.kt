@@ -762,6 +762,22 @@ private fun SummaryTab(
                                                     text = "Stay ${visit.classification} at ${visit.centroidLat}, ${visit.centroidLng}",
                                                     style = MaterialTheme.typography.bodySmall,
                                                 )
+                                                Text(
+                                                    text = "Enriched address: ${visit.enrichedAddress ?: "Unavailable"}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                )
+                                                Text(
+                                                    text = "POI: ${visit.poiName ?: "Unavailable"} (${visit.poiType ?: "n/a"})",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                )
+                                                Text(
+                                                    text = if (visit.isHotel == true) {
+                                                        "Hotel indicator: yes"
+                                                    } else {
+                                                        "Hotel indicator: no"
+                                                    },
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                )
                                             }
                                         }
                                     }

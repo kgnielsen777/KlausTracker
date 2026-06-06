@@ -31,7 +31,39 @@ interface VisitDao {
             s.centroid_lat AS centroidLat,
             s.centroid_lng AS centroidLng,
             s.radius_meters AS radiusMeters,
-            s.classification AS classification
+            s.classification AS classification,
+            (
+                SELECT e.formatted_address
+                FROM enrichments e
+                INNER JOIN capture_points c ON c.id = e.capture_point_id
+                WHERE c.timestamp_utc >= v.start_utc AND c.timestamp_utc <= v.end_utc
+                ORDER BY c.timestamp_utc DESC
+                LIMIT 1
+            ) AS enrichedAddress,
+            (
+                SELECT e.poi_name
+                FROM enrichments e
+                INNER JOIN capture_points c ON c.id = e.capture_point_id
+                WHERE c.timestamp_utc >= v.start_utc AND c.timestamp_utc <= v.end_utc
+                ORDER BY c.timestamp_utc DESC
+                LIMIT 1
+            ) AS poiName,
+            (
+                SELECT e.poi_type
+                FROM enrichments e
+                INNER JOIN capture_points c ON c.id = e.capture_point_id
+                WHERE c.timestamp_utc >= v.start_utc AND c.timestamp_utc <= v.end_utc
+                ORDER BY c.timestamp_utc DESC
+                LIMIT 1
+            ) AS poiType,
+            (
+                SELECT e.is_hotel
+                FROM enrichments e
+                INNER JOIN capture_points c ON c.id = e.capture_point_id
+                WHERE c.timestamp_utc >= v.start_utc AND c.timestamp_utc <= v.end_utc
+                ORDER BY c.timestamp_utc DESC
+                LIMIT 1
+            ) AS isHotel
         FROM visits v
         INNER JOIN places p ON p.id = v.place_id
         INNER JOIN stay_segments s ON s.id = v.stay_segment_id

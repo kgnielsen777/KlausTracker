@@ -87,6 +87,7 @@ abstract class TrackerDatabase : RoomDatabase() {
                     TrackerDatabase::class.java,
                     DB_NAME,
                 )
+                    .openHelperFactory(DatabaseEncryption.supportFactory(context))
                     .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { instance = it }

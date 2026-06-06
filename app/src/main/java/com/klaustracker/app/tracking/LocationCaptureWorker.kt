@@ -63,6 +63,10 @@ class LocationCaptureWorker(
         val enrichmentDraft = GeocoderLocationEnricher(applicationContext)
             .enrich(location.latitude, location.longitude)
         repository.persistCaptureEnrichment(captureId, enrichmentDraft)
+        repository.retryPendingEnrichments(
+            enricher = GeocoderLocationEnricher(applicationContext),
+            limit = 5,
+        )
 
         return Result.success()
     }

@@ -27,10 +27,24 @@ class TrackingScheduler(context: Context) {
             ExistingPeriodicWorkPolicy.UPDATE,
             request,
         )
+
+        val enrichmentRetryRequest = PeriodicWorkRequestBuilder<EnrichmentRetryWorker>(
+            EnrichmentRetryWorker.PERIODIC_MINUTES,
+            TimeUnit.MINUTES,
+        )
+            .setConstraints(defaultConstraints())
+            .build()
+
+        workManager.enqueueUniquePeriodicWork(
+            EnrichmentRetryWorker.UNIQUE_PERIODIC_WORK_NAME,
+            ExistingPeriodicWorkPolicy.UPDATE,
+            enrichmentRetryRequest,
+        )
     }
 
     fun stopPeriodicCapture() {
         workManager.cancelUniqueWork(LocationCaptureWorker.UNIQUE_PERIODIC_WORK_NAME)
+        workManager.cancelUniqueWork(EnrichmentRetryWorker.UNIQUE_PERIODIC_WORK_NAME)
     }
 
     fun captureNow() {

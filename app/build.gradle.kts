@@ -54,6 +54,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.play.services)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
+    implementation(libs.androidx.security.crypto)
+    implementation(libs.sqlcipher.android)
     ksp(libs.androidx.room.compiler)
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.compose.ui:ui")
