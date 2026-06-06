@@ -84,4 +84,34 @@ interface PlaceDao {
 
     @Query("SELECT COUNT(*) FROM places")
     suspend fun count(): Int
+
+        @Query(
+                """
+                UPDATE places
+                SET default_address = (
+                        SELECT e.formatted_address
+                        FROM visits v
+                        INNER JOIN capture_points c ON c.timestamp_utc >= v.start_utc AND c.timestamp_utc <= v.end_utc
+                        INNER JOIN enrichments e ON e.capture_point_id = c.id
+                        WHERE v.place_id = places.id
+                            AND e.formatted_address IS NOT NULL
+                            AND e.formatted_address != ''
+                        ORDER BY c.timestamp_utc DESC
+                        LIMIT 1
+                ),
+                updated_utc = :updatedUtc
+                WHERE active = 1
+                    AND (default_address IS NULL OR default_address = '')
+                    AND EXISTS (
+                            SELECT 1
+                            FROM visits v
+                            INNER JOIN capture_points c ON c.timestamp_utc >= v.start_utc AND c.timestamp_utc <= v.end_utc
+                            INNER JOIN enrichments e ON e.capture_point_id = c.id
+                            WHERE v.place_id = places.id
+                                AND e.formatted_address IS NOT NULL
+                                AND e.formatted_address != ''
+                    )
+                """
+        )
+        suspend fun backfillMissingAddresses(updatedUtc: String): Int
 }

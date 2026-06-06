@@ -31,6 +31,8 @@ data class AppUiState(
     val visitDetails: List<VisitDetailRow> = emptyList(),
     val isLoading: Boolean = true,
     val periodicCaptureEnabled: Boolean = false,
+    val timelineUndoAvailable: Boolean = false,
+    val timelineUndoMessage: String? = null,
     val selectedPlaceId: String? = null,
     val selectedVisitId: String? = null,
     val placeActionMessage: String? = null,
@@ -52,6 +54,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
+    private var lastDeletedCaptureSnapshot: TrackerRepository.DeletedCaptureSnapshot? = null
 
     init {
         viewModelScope.launch {
@@ -113,6 +116,47 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun captureNow() {
         trackingScheduler.captureNow()
+    }
+
+    fun deleteTimelineCapture(captureId: String) {
+        viewModelScope.launch {
+            val snapshot = repository.deleteCapture(captureId)
+            lastDeletedCaptureSnapshot = snapshot
+            _uiState.update {
+                it.copy(
+                    timelineUndoAvailable = snapshot != null,
+                    timelineUndoMessage = if (snapshot != null) {
+                        "Removed location from timeline."
+                    } else {
+                        null
+                    },
+                )
+            }
+        }
+    }
+
+    fun undoDeleteTimelineCapture() {
+        viewModelScope.launch {
+            val snapshot = lastDeletedCaptureSnapshot ?: return@launch
+            repository.restoreDeletedCapture(snapshot)
+            lastDeletedCaptureSnapshot = null
+            _uiState.update {
+                it.copy(
+                    timelineUndoAvailable = false,
+                    timelineUndoMessage = null,
+                )
+            }
+        }
+    }
+
+    fun dismissTimelineUndo() {
+        lastDeletedCaptureSnapshot = null
+        _uiState.update {
+            it.copy(
+                timelineUndoAvailable = false,
+                timelineUndoMessage = null,
+            )
+        }
     }
 
     fun selectPlace(placeId: String) {

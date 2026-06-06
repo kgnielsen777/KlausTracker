@@ -21,10 +21,20 @@ import java.time.Instant
 import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
+import kotlin.math.asin
+import kotlin.math.cos
+import kotlin.math.pow
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 class TrackerRepository(
     private val database: TrackerDatabase,
 ) {
+    data class DeletedCaptureSnapshot(
+        val capture: CapturePointEntity,
+        val enrichment: EnrichmentEntity?,
+    )
+
     fun observeRecentCaptures(limit: Int = 20): Flow<List<CapturePointEntity>> =
         database.capturePointDao().observeRecent(limit)
 
@@ -208,6 +218,19 @@ class TrackerRepository(
         return captureId
     }
 
+    suspend fun deleteCapture(capturePointId: String): DeletedCaptureSnapshot? {
+        val existing = database.capturePointDao().byId(capturePointId) ?: return null
+        val enrichment = database.enrichmentDao().forCapturePoint(capturePointId)
+        database.capturePointDao().deleteById(existing.id)
+        return DeletedCaptureSnapshot(existing, enrichment)
+    }
+
+    suspend fun restoreDeletedCapture(snapshot: DeletedCaptureSnapshot): Boolean {
+        database.capturePointDao().upsert(snapshot.capture)
+        snapshot.enrichment?.let { database.enrichmentDao().upsert(it) }
+        return true
+    }
+
     suspend fun persistCaptureEnrichment(capturePointId: String, enrichmentDraft: EnrichmentDraft) {
         val existing = database.enrichmentDao().forCapturePoint(capturePointId)
         database.enrichmentDao().upsert(
@@ -226,6 +249,59 @@ class TrackerRepository(
         )
 
         database.capturePointDao().updateEnrichmentStatus(capturePointId, enrichmentDraft.captureStatus)
+        backfillPlaceAddressFromEnrichedCapture(capturePointId, enrichmentDraft.formattedAddress)
+    }
+
+    private suspend fun backfillPlaceAddressFromEnrichedCapture(
+        capturePointId: String,
+        formattedAddress: String?,
+    ) {
+        if (formattedAddress.isNullOrBlank()) {
+            return
+        }
+
+        val capture = database.capturePointDao().byId(capturePointId) ?: return
+        val candidatePlace = database.placeDao()
+            .activePlaces()
+            .asSequence()
+            .filter { it.defaultAddress.isNullOrBlank() }
+            .map { place ->
+                place to distanceMeters(
+                    capture.latitude,
+                    capture.longitude,
+                    place.centroidLat,
+                    place.centroidLng,
+                )
+            }
+            .filter { (_, distanceMeters) -> distanceMeters <= PLACE_ADDRESS_BACKFILL_RADIUS_METERS }
+            .minByOrNull { (_, distanceMeters) -> distanceMeters }
+            ?.first
+            ?: return
+
+        database.placeDao().upsert(
+            candidatePlace.copy(
+                defaultAddress = formattedAddress,
+                updatedUtc = Instant.now().toString(),
+            )
+        )
+    }
+
+    private fun distanceMeters(
+        lat1: Double,
+        lng1: Double,
+        lat2: Double,
+        lng2: Double,
+    ): Double {
+        val earthRadiusMeters = 6_371_000.0
+        val latRad1 = Math.toRadians(lat1)
+        val latRad2 = Math.toRadians(lat2)
+        val latDelta = Math.toRadians(lat2 - lat1)
+        val lngDelta = Math.toRadians(lng2 - lng1)
+
+        val a = sin(latDelta / 2).pow(2) +
+            cos(latRad1) * cos(latRad2) * sin(lngDelta / 2).pow(2)
+        val c = 2 * asin(sqrt(a))
+        return earthRadiusMeters * c
     }
 
     suspend fun retryPendingEnrichments(
@@ -250,6 +326,11 @@ class TrackerRepository(
 
     suspend fun refreshDetectedPlacesFromRecentCaptures(limit: Int = PLACE_BACKFILL_CAPTURE_LIMIT) {
         detectAndPersistStayIfNeeded(limit)
+        backfillMissingPlaceAddresses()
+    }
+
+    suspend fun backfillMissingPlaceAddresses(): Int {
+        return database.placeDao().backfillMissingAddresses(Instant.now().toString())
     }
 
     private suspend fun detectAndPersistStayIfNeeded(limit: Int = 8) {
@@ -357,6 +438,7 @@ class TrackerRepository(
         private const val RECURRING_MIN_DURATION_MINUTES = 180
         private const val ENRICHMENT_RETRY_BATCH_SIZE = 25
         private const val PLACE_BACKFILL_CAPTURE_LIMIT = 48
+        private const val PLACE_ADDRESS_BACKFILL_RADIUS_METERS = 250.0
     }
 
     private suspend fun ensureDemoPlaceAndVisit(now: String) {

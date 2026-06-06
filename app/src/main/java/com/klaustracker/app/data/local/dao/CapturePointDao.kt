@@ -12,6 +12,9 @@ interface CapturePointDao {
     @Upsert
     suspend fun upsert(point: CapturePointEntity)
 
+    @Query("SELECT * FROM capture_points WHERE id = :capturePointId LIMIT 1")
+    suspend fun byId(capturePointId: String): CapturePointEntity?
+
     @Query("SELECT * FROM capture_points ORDER BY timestamp_utc DESC LIMIT :limit")
     suspend fun recent(limit: Int): List<CapturePointEntity>
 
@@ -50,4 +53,7 @@ interface CapturePointDao {
 
     @Query("UPDATE capture_points SET enrichment_status = :status WHERE id = :capturePointId")
     suspend fun updateEnrichmentStatus(capturePointId: String, status: String)
+
+    @Query("DELETE FROM capture_points WHERE id = :capturePointId")
+    suspend fun deleteById(capturePointId: String)
 }

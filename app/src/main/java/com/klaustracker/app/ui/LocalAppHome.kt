@@ -30,8 +30,11 @@ import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -169,6 +172,11 @@ fun LocalAppHome(
                             captures = uiState.timelineCaptures,
                             demoModeEnabled = demoModeEnabled,
                             onAddDemoCapture = appViewModel::addDemoCapture,
+                            onDeleteCapture = appViewModel::deleteTimelineCapture,
+                            undoAvailable = uiState.timelineUndoAvailable,
+                            undoMessage = uiState.timelineUndoMessage,
+                            onUndoDelete = appViewModel::undoDeleteTimelineCapture,
+                            onDismissUndo = appViewModel::dismissTimelineUndo,
                         )
                     }
 
@@ -463,6 +471,11 @@ private fun TimelineTab(
     captures: List<com.klaustracker.app.data.local.model.CaptureTimelineRow>,
     demoModeEnabled: Boolean,
     onAddDemoCapture: () -> Unit,
+    onDeleteCapture: (String) -> Unit,
+    undoAvailable: Boolean,
+    undoMessage: String?,
+    onUndoDelete: () -> Unit,
+    onDismissUndo: () -> Unit,
 ) {
     var filter by remember { mutableStateOf(TimelineFilter.All) }
     val filteredCaptures = captures.filter { filter.matches(it.motionState) }
@@ -479,6 +492,31 @@ private fun TimelineTab(
         if (demoModeEnabled) {
             Button(onClick = onAddDemoCapture, modifier = Modifier.fillMaxWidth()) {
                 Text("Add demo capture")
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        if (undoAvailable) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = undoMessage ?: "Location removed.",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedButton(onClick = onUndoDelete) {
+                        Text("Undo")
+                    }
+                    OutlinedButton(onClick = onDismissUndo) {
+                        Text("Dismiss")
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -531,46 +569,76 @@ private fun TimelineTab(
                     MotionBucket.Other -> MaterialTheme.colorScheme.surfaceVariant
                 }
 
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = cardColor),
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            text = formatTimelineTimestamp(capture.timestampUtc),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Text(
-                            text = "Lat ${formatCoordinate(capture.latitude)}, Lng ${formatCoordinate(capture.longitude)}",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        Text(
-                            text = motionLabel(capture.motionState),
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Medium,
-                        )
-                        Text(
-                            text = "Speed: ${formatSpeed(capture.speedKmh)}",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        Text(
-                            text = "Address: ${capture.enrichedAddress ?: "Unavailable"}",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        Text(
-                            text = "POI: ${capture.poiName ?: "Unavailable"} (${capture.poiType ?: "n/a"})",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        if (capture.isHotel == true) {
+                val dismissState = rememberSwipeToDismissBoxState(
+                    confirmValueChange = { value ->
+                        if (value == SwipeToDismissBoxValue.EndToStart) {
+                            onDeleteCapture(capture.id)
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                )
+
+                SwipeToDismissBox(
+                    state = dismissState,
+                    enableDismissFromStartToEnd = false,
+                    backgroundContent = {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 16.dp),
+                        ) {
                             Text(
-                                text = "Hotel match",
+                                text = "Delete",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.align(androidx.compose.ui.Alignment.CenterEnd),
+                            )
+                        }
+                    },
+                ) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = cardColor),
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = formatTimelineTimestamp(capture.timestampUtc),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Text(
+                                text = "Lat ${formatCoordinate(capture.latitude)}, Lng ${formatCoordinate(capture.longitude)}",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Text(
+                                text = motionLabel(capture.motionState),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            Text(
+                                text = "Speed: ${formatSpeed(capture.speedKmh)}",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Text(
+                                text = "Address: ${capture.enrichedAddress ?: "Unavailable"}",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            Text(
+                                text = "POI: ${capture.poiName ?: "Unavailable"} (${capture.poiType ?: "n/a"})",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            if (capture.isHotel == true) {
+                                Text(
+                                    text = "Hotel match",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                            Text(
+                                text = "Source: ${capture.source} | Motion: ${capture.motionState}",
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
-                        Text(
-                            text = "Source: ${capture.source} | Motion: ${capture.motionState}",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
                     }
                 }
             }
