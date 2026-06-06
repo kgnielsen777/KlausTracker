@@ -13,6 +13,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -223,6 +225,9 @@ private fun TimelineTab(
     captures: List<com.klaustracker.app.data.local.entity.CapturePointEntity>,
     onAddDemoCapture: () -> Unit,
 ) {
+    var filter by remember { mutableStateOf(TimelineFilter.All) }
+    val filteredCaptures = captures.filter { filter.matches(it.motionState) }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
             text = "Timeline",
@@ -238,24 +243,61 @@ private fun TimelineTab(
 
         Spacer(modifier = Modifier.height(8.dp))
 
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            TimelineFilter.entries.forEach { candidate ->
+                FilterChip(
+                    selected = filter == candidate,
+                    onClick = { filter = candidate },
+                    label = { Text(candidate.label) },
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Text(
+            text = "Legend: Transit (moving) | Stay (stationary) | Other",
+            style = MaterialTheme.typography.bodySmall,
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
         if (isLoading) {
             Text("Loading local data...")
             return
         }
 
-        if (captures.isEmpty()) {
+        if (filteredCaptures.isEmpty()) {
             Text("No captures yet. Tap 'Add demo capture' to seed local timeline.")
             return
         }
 
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(captures) { capture ->
-                Card(modifier = Modifier.fillMaxWidth()) {
+            items(filteredCaptures) { capture ->
+                val motionBucket = motionBucket(capture.motionState)
+                val cardColor = when (motionBucket) {
+                    MotionBucket.Transit -> MaterialTheme.colorScheme.secondaryContainer
+                    MotionBucket.Stay -> MaterialTheme.colorScheme.tertiaryContainer
+                    MotionBucket.Other -> MaterialTheme.colorScheme.surfaceVariant
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = cardColor),
+                ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(text = capture.timestampUtc, style = MaterialTheme.typography.bodyMedium)
                         Text(
                             text = "Lat ${capture.latitude}, Lng ${capture.longitude}",
                             style = MaterialTheme.typography.bodySmall,
+                        )
+                        Text(
+                            text = motionLabel(capture.motionState),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium,
                         )
                         Text(
                             text = "Source: ${capture.source} | Motion: ${capture.motionState}",
@@ -265,6 +307,45 @@ private fun TimelineTab(
                 }
             }
         }
+    }
+}
+
+private enum class MotionBucket {
+    Transit,
+    Stay,
+    Other,
+}
+
+private enum class TimelineFilter(val label: String) {
+    All("All"),
+    Transit("Transit"),
+    Stay("Stay"),
+    Other("Other");
+
+    fun matches(motionState: String): Boolean {
+        val bucket = motionBucket(motionState)
+        return when (this) {
+            All -> true
+            Transit -> bucket == MotionBucket.Transit
+            Stay -> bucket == MotionBucket.Stay
+            Other -> bucket == MotionBucket.Other
+        }
+    }
+}
+
+private fun motionBucket(motionState: String): MotionBucket {
+    return when (motionState.lowercase()) {
+        "transit", "driving" -> MotionBucket.Transit
+        "stay_candidate", "stationary" -> MotionBucket.Stay
+        else -> MotionBucket.Other
+    }
+}
+
+private fun motionLabel(motionState: String): String {
+    return when (motionBucket(motionState)) {
+        MotionBucket.Transit -> "Transit segment"
+        MotionBucket.Stay -> "Stay segment"
+        MotionBucket.Other -> "Other / unknown"
     }
 }
 
