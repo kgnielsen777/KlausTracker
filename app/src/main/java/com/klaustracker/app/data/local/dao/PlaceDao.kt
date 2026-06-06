@@ -12,6 +12,9 @@ interface PlaceDao {
     @Upsert
     suspend fun upsert(place: PlaceEntity)
 
+    @Query("SELECT * FROM places WHERE id = :placeId LIMIT 1")
+    suspend fun byId(placeId: String): PlaceEntity?
+
     @Query("SELECT * FROM places WHERE active = 1 ORDER BY updated_utc DESC")
     suspend fun activePlaces(): List<PlaceEntity>
 
@@ -37,6 +40,47 @@ interface PlaceDao {
         """
     )
     fun observePlaceDurationSummaries(): Flow<List<PlaceDurationSummaryRow>>
+
+    @Query(
+        """
+        UPDATE places
+        SET label_type = :labelType,
+            custom_label = :customLabel,
+            canonical_name = :canonicalName,
+            updated_utc = :updatedUtc
+        WHERE id = :placeId
+        """
+    )
+    suspend fun updateLabel(
+        placeId: String,
+        labelType: String,
+        customLabel: String?,
+        canonicalName: String,
+        updatedUtc: String,
+    )
+
+    @Query(
+        """
+        UPDATE places
+        SET canonical_name = :canonicalName,
+            label_type = :labelType,
+            custom_label = :customLabel,
+            default_address = :defaultAddress,
+            updated_utc = :updatedUtc
+        WHERE id = :placeId
+        """
+    )
+    suspend fun updateAfterMerge(
+        placeId: String,
+        canonicalName: String,
+        labelType: String,
+        customLabel: String?,
+        defaultAddress: String?,
+        updatedUtc: String,
+    )
+
+    @Query("UPDATE places SET active = 0, updated_utc = :updatedUtc WHERE id = :placeId")
+    suspend fun deactivate(placeId: String, updatedUtc: String)
 
     @Query("SELECT COUNT(*) FROM places")
     suspend fun count(): Int

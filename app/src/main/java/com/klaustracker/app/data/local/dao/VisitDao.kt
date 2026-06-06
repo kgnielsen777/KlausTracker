@@ -40,4 +40,7 @@ interface VisitDao {
         """
     )
     fun observeVisitDetailsForPlace(placeId: String): Flow<List<VisitDetailRow>>
+
+    @Query("UPDATE visits SET place_id = :targetPlaceId WHERE place_id = :sourcePlaceId")
+    suspend fun reassignPlace(sourcePlaceId: String, targetPlaceId: String)
 }

@@ -15,6 +15,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -106,7 +107,13 @@ fun LocalAppHome(
                 )
             }
 
-            HomeTab.Places -> PlacesTab(uiState.places)
+            HomeTab.Places -> PlacesTab(
+                places = uiState.places,
+                actionMessage = uiState.placeActionMessage,
+                onRelabelPlace = appViewModel::relabelPlace,
+                onMergePlaces = appViewModel::mergePlaces,
+                onDismissMessage = appViewModel::clearPlaceActionMessage,
+            )
             HomeTab.Summary -> SummaryTab(
                 summaries = uiState.placeSummaries,
                 visitDetails = uiState.visitDetails,
@@ -176,7 +183,20 @@ private fun TimelineTab(
 }
 
 @Composable
-private fun PlacesTab(places: List<com.klaustracker.app.data.local.entity.PlaceEntity>) {
+private fun PlacesTab(
+    places: List<com.klaustracker.app.data.local.entity.PlaceEntity>,
+    actionMessage: String?,
+    onRelabelPlace: (placeId: String, labelType: String, customLabel: String?) -> Unit,
+    onMergePlaces: (sourcePlaceId: String, targetPlaceId: String) -> Unit,
+    onDismissMessage: () -> Unit,
+) {
+    var selectedPlaceId by remember { mutableStateOf<String?>(null) }
+    var mergeTargetPlaceId by remember { mutableStateOf<String?>(null) }
+    var customLabel by remember { mutableStateOf("") }
+
+    val selectedPlace = places.firstOrNull { it.id == selectedPlaceId }
+    val mergeCandidates = places.filter { it.id != selectedPlaceId }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
             text = "Places",
@@ -191,9 +211,124 @@ private fun PlacesTab(places: List<com.klaustracker.app.data.local.entity.PlaceE
             return
         }
 
+        if (!actionMessage.isNullOrBlank()) {
+            Text(
+                text = actionMessage,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            OutlinedButton(
+                onClick = onDismissMessage,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp),
+            ) {
+                Text("Dismiss")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        if (selectedPlace != null) {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text("Manage selected place", style = MaterialTheme.typography.titleSmall)
+                    Text(selectedPlace.canonicalName, style = MaterialTheme.typography.bodyMedium)
+                    Text(selectedPlace.defaultAddress ?: "No address", style = MaterialTheme.typography.bodySmall)
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { onRelabelPlace(selectedPlace.id, "home", null) },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Home") }
+                        OutlinedButton(
+                            onClick = { onRelabelPlace(selectedPlace.id, "work", null) },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Work") }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { onRelabelPlace(selectedPlace.id, "friend", null) },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Friend") }
+                        OutlinedButton(
+                            onClick = { onRelabelPlace(selectedPlace.id, "family", null) },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("Family") }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    OutlinedTextField(
+                        value = customLabel,
+                        onValueChange = { customLabel = it },
+                        label = { Text("Custom label") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Button(
+                        onClick = { onRelabelPlace(selectedPlace.id, "custom", customLabel) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Apply custom label")
+                    }
+
+                    if (mergeCandidates.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text("Merge this place into", style = MaterialTheme.typography.titleSmall)
+
+                        mergeCandidates.forEach { candidate ->
+                            OutlinedButton(
+                                onClick = { mergeTargetPlaceId = candidate.id },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 6.dp),
+                            ) {
+                                val marker = if (mergeTargetPlaceId == candidate.id) "* " else ""
+                                Text("$marker${candidate.canonicalName}")
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                val target = mergeTargetPlaceId
+                                if (target != null) {
+                                    onMergePlaces(selectedPlace.id, target)
+                                    selectedPlaceId = null
+                                    mergeTargetPlaceId = null
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
+                            enabled = mergeTargetPlaceId != null,
+                        ) {
+                            Text("Merge places")
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(places) { place ->
-                Card(modifier = Modifier.fillMaxWidth()) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            selectedPlaceId = place.id
+                            mergeTargetPlaceId = null
+                            customLabel = place.customLabel ?: ""
+                        },
+                ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text(place.canonicalName, style = MaterialTheme.typography.bodyLarge)
                         Text(
@@ -204,6 +339,12 @@ private fun PlacesTab(places: List<com.klaustracker.app.data.local.entity.PlaceE
                             text = place.defaultAddress ?: "No address",
                             style = MaterialTheme.typography.bodySmall,
                         )
+                        if (selectedPlaceId == place.id) {
+                            Text(
+                                text = "Selected",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                     }
                 }
             }

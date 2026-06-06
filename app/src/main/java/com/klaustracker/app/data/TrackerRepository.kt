@@ -1,5 +1,6 @@
 package com.klaustracker.app.data
 
+import androidx.room.withTransaction
 import com.klaustracker.app.data.local.TrackerDatabase
 import com.klaustracker.app.data.local.entity.CapturePointEntity
 import com.klaustracker.app.data.local.entity.EnrichmentEntity
@@ -30,6 +31,71 @@ class TrackerRepository(
 
     fun observeVisitDetailsForPlace(placeId: String): Flow<List<VisitDetailRow>> =
         database.visitDao().observeVisitDetailsForPlace(placeId)
+
+    suspend fun updatePlaceLabel(
+        placeId: String,
+        labelType: String,
+        customLabel: String?,
+    ): Boolean {
+        val place = database.placeDao().byId(placeId) ?: return false
+        val normalizedCustom = customLabel?.trim().takeIf { !it.isNullOrBlank() }
+        val canonicalName = when (labelType) {
+            "home" -> "Home"
+            "work" -> "Work"
+            "friend" -> "Friend"
+            "family" -> "Family"
+            "custom" -> normalizedCustom ?: place.canonicalName
+            else -> place.canonicalName
+        }
+
+        database.placeDao().updateLabel(
+            placeId = placeId,
+            labelType = labelType,
+            customLabel = normalizedCustom,
+            canonicalName = canonicalName,
+            updatedUtc = Instant.now().toString(),
+        )
+        return true
+    }
+
+    suspend fun mergePlaces(sourcePlaceId: String, targetPlaceId: String): Boolean {
+        if (sourcePlaceId == targetPlaceId) {
+            return false
+        }
+
+        val source = database.placeDao().byId(sourcePlaceId) ?: return false
+        val target = database.placeDao().byId(targetPlaceId) ?: return false
+        val now = Instant.now().toString()
+
+        database.withTransaction {
+            database.visitDao().reassignPlace(sourcePlaceId = source.id, targetPlaceId = target.id)
+
+            val mergedLabelType = if (target.labelType == "detected" && source.labelType != "detected") {
+                source.labelType
+            } else {
+                target.labelType
+            }
+            val mergedCustomLabel = target.customLabel ?: source.customLabel
+            val mergedName = when {
+                mergedLabelType == "custom" && !mergedCustomLabel.isNullOrBlank() -> mergedCustomLabel
+                target.canonicalName == "Detected place" && source.canonicalName != "Detected place" -> source.canonicalName
+                else -> target.canonicalName
+            }
+            val mergedAddress = target.defaultAddress ?: source.defaultAddress
+
+            database.placeDao().updateAfterMerge(
+                placeId = target.id,
+                canonicalName = mergedName,
+                labelType = mergedLabelType,
+                customLabel = mergedCustomLabel,
+                defaultAddress = mergedAddress,
+                updatedUtc = now,
+            )
+            database.placeDao().deactivate(source.id, now)
+        }
+
+        return true
+    }
 
     suspend fun addDemoCapture() {
         val now = Instant.now().toString()

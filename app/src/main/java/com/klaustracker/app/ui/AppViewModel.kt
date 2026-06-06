@@ -10,12 +10,12 @@ import com.klaustracker.app.data.local.entity.PlaceEntity
 import com.klaustracker.app.data.local.model.PlaceDurationSummaryRow
 import com.klaustracker.app.data.local.model.VisitDetailRow
 import com.klaustracker.app.tracking.TrackingScheduler
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Job
 
 data class AppUiState(
     val captures: List<CapturePointEntity> = emptyList(),
@@ -26,6 +26,7 @@ data class AppUiState(
     val periodicCaptureEnabled: Boolean = false,
     val selectedPlaceId: String? = null,
     val selectedVisitId: String? = null,
+    val placeActionMessage: String? = null,
 )
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
@@ -95,5 +96,46 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectVisit(visitId: String) {
         _uiState.update { it.copy(selectedVisitId = visitId) }
+    }
+
+    fun relabelPlace(placeId: String, labelType: String, customLabel: String? = null) {
+        viewModelScope.launch {
+            val success = repository.updatePlaceLabel(
+                placeId = placeId,
+                labelType = labelType,
+                customLabel = customLabel,
+            )
+            _uiState.update {
+                it.copy(
+                    placeActionMessage = if (success) {
+                        "Updated label for selected place."
+                    } else {
+                        "Could not update place label."
+                    }
+                )
+            }
+        }
+    }
+
+    fun mergePlaces(sourcePlaceId: String, targetPlaceId: String) {
+        viewModelScope.launch {
+            val success = repository.mergePlaces(
+                sourcePlaceId = sourcePlaceId,
+                targetPlaceId = targetPlaceId,
+            )
+            _uiState.update {
+                it.copy(
+                    placeActionMessage = if (success) {
+                        "Merged places successfully."
+                    } else {
+                        "Could not merge places."
+                    }
+                )
+            }
+        }
+    }
+
+    fun clearPlaceActionMessage() {
+        _uiState.update { it.copy(placeActionMessage = null) }
     }
 }

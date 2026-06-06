@@ -41,4 +41,18 @@ class EnrichmentHeuristicsTest {
         assertEquals("unavailable", draft.status)
         assertEquals("enrichment_failed", draft.captureStatus)
     }
+
+    @Test
+    fun buildDraft_usesExplicitPoiAndHotelHintsWhenProvided() {
+        val draft = EnrichmentHeuristics.buildDraft(
+            formattedAddress = "City Center",
+            featureName = "Nordic Suites",
+            explicitPoiType = "lodging",
+            explicitIsHotel = true,
+        )
+
+        assertTrue(draft.isHotel)
+        assertEquals("lodging", draft.poiType)
+        assertEquals("ok", draft.status)
+    }
 }
