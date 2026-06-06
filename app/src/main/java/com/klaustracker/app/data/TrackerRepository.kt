@@ -6,6 +6,8 @@ import com.klaustracker.app.data.local.entity.EnrichmentEntity
 import com.klaustracker.app.data.local.entity.PlaceEntity
 import com.klaustracker.app.data.local.entity.StaySegmentEntity
 import com.klaustracker.app.data.local.entity.VisitEntity
+import com.klaustracker.app.data.local.model.PlaceDurationSummaryRow
+import com.klaustracker.app.data.local.model.VisitDetailRow
 import com.klaustracker.app.tracking.EnrichmentDraft
 import com.klaustracker.app.tracking.CaptureSample
 import com.klaustracker.app.tracking.TransitStayClassifier
@@ -22,6 +24,12 @@ class TrackerRepository(
 
     fun observeActivePlaces(): Flow<List<PlaceEntity>> =
         database.placeDao().observeActivePlaces()
+
+    fun observePlaceDurationSummaries(): Flow<List<PlaceDurationSummaryRow>> =
+        database.placeDao().observePlaceDurationSummaries()
+
+    fun observeVisitDetailsForPlace(placeId: String): Flow<List<VisitDetailRow>> =
+        database.visitDao().observeVisitDetailsForPlace(placeId)
 
     suspend fun addDemoCapture() {
         val now = Instant.now().toString()

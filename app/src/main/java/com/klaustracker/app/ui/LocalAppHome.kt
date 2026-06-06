@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -30,6 +31,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 enum class HomeTab {
     Timeline,
     Places,
+    Summary,
     Settings,
 }
 
@@ -105,6 +107,14 @@ fun LocalAppHome(
             }
 
             HomeTab.Places -> PlacesTab(uiState.places)
+            HomeTab.Summary -> SummaryTab(
+                summaries = uiState.placeSummaries,
+                visitDetails = uiState.visitDetails,
+                selectedPlaceId = uiState.selectedPlaceId,
+                selectedVisitId = uiState.selectedVisitId,
+                onPlaceSelected = appViewModel::selectPlace,
+                onVisitSelected = appViewModel::selectVisit,
+            )
             HomeTab.Settings -> SettingsTab(
                 onOpenSettings = onOpenSettings,
                 onCaptureNow = appViewModel::captureNow,
@@ -194,6 +204,85 @@ private fun PlacesTab(places: List<com.klaustracker.app.data.local.entity.PlaceE
                             text = place.defaultAddress ?: "No address",
                             style = MaterialTheme.typography.bodySmall,
                         )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SummaryTab(
+    summaries: List<com.klaustracker.app.data.local.model.PlaceDurationSummaryRow>,
+    visitDetails: List<com.klaustracker.app.data.local.model.VisitDetailRow>,
+    selectedPlaceId: String?,
+    selectedVisitId: String?,
+    onPlaceSelected: (String) -> Unit,
+    onVisitSelected: (String) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Text(
+            text = "Summary",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        if (summaries.isEmpty()) {
+            Text("No place summaries yet. Add a few captures to build totals.")
+            return
+        }
+
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(summaries) { summary ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onPlaceSelected(summary.placeId) },
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(summary.placeName, style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            text = "${summary.totalDurationMinutes} min across ${summary.visitCount} visit(s)",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Text(
+                            text = summary.defaultAddress ?: summary.customLabel ?: summary.labelType,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        if (selectedPlaceId == summary.placeId) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Visits", style = MaterialTheme.typography.titleSmall)
+                            if (visitDetails.isEmpty()) {
+                                Text("No visits loaded yet.")
+                            } else {
+                                visitDetails.forEach { visit ->
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 6.dp)
+                                            .clickable { onVisitSelected(visit.visitId) },
+                                    ) {
+                                        Column(modifier = Modifier.padding(10.dp)) {
+                                            Text("${visit.startUtc} → ${visit.endUtc}")
+                                            Text("${visit.durationMinutes} min, radius ${visit.radiusMeters} m")
+                                            if (selectedVisitId == visit.visitId) {
+                                                Spacer(modifier = Modifier.height(6.dp))
+                                                Text(
+                                                    text = "Detail: ${visit.placeName} | ${visit.defaultAddress ?: "No address"}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                )
+                                                Text(
+                                                    text = "Stay ${visit.classification} at ${visit.centroidLat}, ${visit.centroidLng}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

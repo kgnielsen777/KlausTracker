@@ -7,23 +7,31 @@ import com.klaustracker.app.data.TrackerRepository
 import com.klaustracker.app.data.local.TrackerDatabaseProvider
 import com.klaustracker.app.data.local.entity.CapturePointEntity
 import com.klaustracker.app.data.local.entity.PlaceEntity
+import com.klaustracker.app.data.local.model.PlaceDurationSummaryRow
+import com.klaustracker.app.data.local.model.VisitDetailRow
 import com.klaustracker.app.tracking.TrackingScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 
 data class AppUiState(
     val captures: List<CapturePointEntity> = emptyList(),
     val places: List<PlaceEntity> = emptyList(),
+    val placeSummaries: List<PlaceDurationSummaryRow> = emptyList(),
+    val visitDetails: List<VisitDetailRow> = emptyList(),
     val isLoading: Boolean = true,
     val periodicCaptureEnabled: Boolean = false,
+    val selectedPlaceId: String? = null,
+    val selectedVisitId: String? = null,
 )
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = TrackerRepository(TrackerDatabaseProvider.database(application))
     private val trackingScheduler = TrackingScheduler(application)
+    private var visitDetailsJob: Job? = null
 
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -40,6 +48,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.observeActivePlaces().collect { places ->
                 _uiState.update { it.copy(places = places) }
+            }
+        }
+
+        viewModelScope.launch {
+            repository.observePlaceDurationSummaries().collect { summaries ->
+                _uiState.update { it.copy(placeSummaries = summaries) }
             }
         }
     }
@@ -61,5 +75,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun captureNow() {
         trackingScheduler.captureNow()
+    }
+
+    fun selectPlace(placeId: String) {
+        visitDetailsJob?.cancel()
+        _uiState.update { it.copy(selectedPlaceId = placeId, selectedVisitId = null, visitDetails = emptyList()) }
+        visitDetailsJob = viewModelScope.launch {
+            repository.observeVisitDetailsForPlace(placeId).collect { visits ->
+                _uiState.update {
+                    it.copy(
+                        selectedPlaceId = placeId,
+                        selectedVisitId = visits.firstOrNull()?.visitId,
+                        visitDetails = visits,
+                    )
+                }
+            }
+        }
+    }
+
+    fun selectVisit(visitId: String) {
+        _uiState.update { it.copy(selectedVisitId = visitId) }
     }
 }
