@@ -11,7 +11,6 @@ import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import com.klaustracker.app.data.TrackerRepository
 import com.klaustracker.app.data.local.TrackerDatabaseProvider
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.tasks.await
 
 class LocationCaptureWorker(
@@ -48,12 +47,7 @@ class LocationCaptureWorker(
             null
         }
 
-        val motionState = when {
-            speedKmh == null -> "unknown"
-            speedKmh > DRIVING_THRESHOLD_KMH -> "driving"
-            speedKmh > WALKING_THRESHOLD_KMH -> "walking"
-            else -> "stationary"
-        }
+        val motionState = TransitStayClassifier.classifyMotionState(speedKmh)
 
         val repository = TrackerRepository(TrackerDatabaseProvider.database(applicationContext))
         repository.insertCapture(
@@ -73,10 +67,6 @@ class LocationCaptureWorker(
         const val UNIQUE_PERIODIC_WORK_NAME = "location_capture_periodic"
         const val UNIQUE_NOW_WORK_NAME = "location_capture_now"
         const val PERIODIC_MINUTES = 30L
-        private const val DRIVING_THRESHOLD_KMH = 15f
-        private const val WALKING_THRESHOLD_KMH = 2f
-
-        fun periodicRepeatInterval() = TimeUnit.MINUTES.toMillis(PERIODIC_MINUTES)
     }
 }
 
