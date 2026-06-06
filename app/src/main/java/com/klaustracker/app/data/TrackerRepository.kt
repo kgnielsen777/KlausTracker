@@ -20,27 +20,48 @@ class TrackerRepository(
 
     suspend fun addDemoCapture() {
         val now = Instant.now().toString()
-        val captureId = UUID.randomUUID().toString()
         val captureCount = database.capturePointDao().count()
         val baseLat = 55.6761
         val baseLng = 12.5683
         val offset = captureCount * 0.001
 
-        database.capturePointDao().upsert(
-            CapturePointEntity(
-                id = captureId,
-                timestampUtc = now,
-                latitude = baseLat + offset,
-                longitude = baseLng + offset,
-                accuracyMeters = 24f,
-                speedKmh = 0f,
-                motionState = "stationary",
-                source = "demo",
-                enrichmentStatus = "pending",
-            )
+        insertCapture(
+            latitude = baseLat + offset,
+            longitude = baseLng + offset,
+            accuracyMeters = 24f,
+            speedKmh = 0f,
+            motionState = "stationary",
+            source = "demo",
+            enrichmentStatus = "pending",
+            timestampUtc = now,
         )
 
         ensureDemoPlaceAndVisit(now)
+    }
+
+    suspend fun insertCapture(
+        latitude: Double,
+        longitude: Double,
+        accuracyMeters: Float,
+        speedKmh: Float?,
+        motionState: String,
+        source: String,
+        enrichmentStatus: String,
+        timestampUtc: String = Instant.now().toString(),
+    ) {
+        database.capturePointDao().upsert(
+            CapturePointEntity(
+                id = UUID.randomUUID().toString(),
+                timestampUtc = timestampUtc,
+                latitude = latitude,
+                longitude = longitude,
+                accuracyMeters = accuracyMeters,
+                speedKmh = speedKmh,
+                motionState = motionState,
+                source = source,
+                enrichmentStatus = enrichmentStatus,
+            )
+        )
     }
 
     private suspend fun ensureDemoPlaceAndVisit(now: String) {

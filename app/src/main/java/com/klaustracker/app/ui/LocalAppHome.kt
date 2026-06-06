@@ -16,6 +16,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,6 +42,10 @@ fun LocalAppHome(
     val uiState by appViewModel.uiState.collectAsStateWithLifecycle()
     var tab by remember { mutableStateOf(HomeTab.Timeline) }
 
+    LaunchedEffect(trackingEnabled) {
+        appViewModel.setTrackingEnabled(trackingEnabled)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -58,6 +63,14 @@ fun LocalAppHome(
                 "Tracking disabled"
             },
             style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            text = if (uiState.periodicCaptureEnabled) {
+                "Background capture: every 30 minutes"
+            } else {
+                "Background capture: off"
+            },
+            style = MaterialTheme.typography.bodySmall,
         )
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -92,7 +105,11 @@ fun LocalAppHome(
             }
 
             HomeTab.Places -> PlacesTab(uiState.places)
-            HomeTab.Settings -> SettingsTab(onOpenSettings)
+            HomeTab.Settings -> SettingsTab(
+                onOpenSettings = onOpenSettings,
+                onCaptureNow = appViewModel::captureNow,
+                onAddDemoCapture = appViewModel::addDemoCapture,
+            )
         }
     }
 }
@@ -185,7 +202,11 @@ private fun PlacesTab(places: List<com.klaustracker.app.data.local.entity.PlaceE
 }
 
 @Composable
-private fun SettingsTab(onOpenSettings: () -> Unit) {
+private fun SettingsTab(
+    onOpenSettings: () -> Unit,
+    onCaptureNow: () -> Unit,
+    onAddDemoCapture: () -> Unit,
+) {
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
             text = "Settings",
@@ -201,6 +222,18 @@ private fun SettingsTab(onOpenSettings: () -> Unit) {
 
         OutlinedButton(onClick = onOpenSettings, modifier = Modifier.fillMaxWidth()) {
             Text("Open Android app settings")
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Button(onClick = onCaptureNow, modifier = Modifier.fillMaxWidth()) {
+            Text("Capture current location now")
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        OutlinedButton(onClick = onAddDemoCapture, modifier = Modifier.fillMaxWidth()) {
+            Text("Insert demo capture")
         }
     }
 }

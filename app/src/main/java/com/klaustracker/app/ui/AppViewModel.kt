@@ -7,6 +7,7 @@ import com.klaustracker.app.data.TrackerRepository
 import com.klaustracker.app.data.local.TrackerDatabaseProvider
 import com.klaustracker.app.data.local.entity.CapturePointEntity
 import com.klaustracker.app.data.local.entity.PlaceEntity
+import com.klaustracker.app.tracking.TrackingScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,10 +18,12 @@ data class AppUiState(
     val captures: List<CapturePointEntity> = emptyList(),
     val places: List<PlaceEntity> = emptyList(),
     val isLoading: Boolean = true,
+    val periodicCaptureEnabled: Boolean = false,
 )
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = TrackerRepository(TrackerDatabaseProvider.database(application))
+    private val trackingScheduler = TrackingScheduler(application)
 
     private val _uiState = MutableStateFlow(AppUiState())
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
@@ -45,5 +48,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.addDemoCapture()
         }
+    }
+
+    fun setTrackingEnabled(enabled: Boolean) {
+        if (enabled) {
+            trackingScheduler.startPeriodicCapture()
+        } else {
+            trackingScheduler.stopPeriodicCapture()
+        }
+        _uiState.update { it.copy(periodicCaptureEnabled = enabled) }
+    }
+
+    fun captureNow() {
+        trackingScheduler.captureNow()
     }
 }
