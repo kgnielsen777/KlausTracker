@@ -1,0 +1,24 @@
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+/build/
+/captures/
+.externalNativeBuild/
+.cxx/
+*.iml
+
+# Android/Java/Kotlin
+*.apk
+*.aab
+*.ap_
+*.class
+
+# Secrets
+*.jks
+*.keystore
+secrets.properties
+
+# OS/Editor
+Thumbs.db
+.vscode/
