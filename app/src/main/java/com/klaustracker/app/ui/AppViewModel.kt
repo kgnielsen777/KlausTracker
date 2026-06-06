@@ -7,6 +7,7 @@ import com.klaustracker.app.data.TrackerRepository
 import com.klaustracker.app.data.local.TrackerDatabaseProvider
 import com.klaustracker.app.data.local.entity.CapturePointEntity
 import com.klaustracker.app.data.local.entity.PlaceEntity
+import com.klaustracker.app.data.local.model.CaptureTimelineRow
 import com.klaustracker.app.data.local.model.PlaceDurationSummaryRow
 import com.klaustracker.app.data.local.model.PlaceSuggestionRow
 import com.klaustracker.app.data.local.model.VisitDetailRow
@@ -23,6 +24,7 @@ import kotlinx.coroutines.launch
 
 data class AppUiState(
     val captures: List<CapturePointEntity> = emptyList(),
+    val timelineCaptures: List<CaptureTimelineRow> = emptyList(),
     val places: List<PlaceEntity> = emptyList(),
     val placeSummaries: List<PlaceDurationSummaryRow> = emptyList(),
     val pendingSuggestions: List<PlaceSuggestionRow> = emptyList(),
@@ -53,9 +55,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         viewModelScope.launch {
+            repository.refreshDetectedPlacesFromRecentCaptures()
+        }
+
+        viewModelScope.launch {
             repository.observeRecentCaptures().collect { captures ->
                 _uiState.update {
                     it.copy(captures = captures, isLoading = false)
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            repository.observeRecentTimelineCaptures().collect { captures ->
+                _uiState.update {
+                    it.copy(timelineCaptures = captures, isLoading = false)
                 }
             }
         }

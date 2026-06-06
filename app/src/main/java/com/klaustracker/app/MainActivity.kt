@@ -93,6 +93,20 @@ private fun PermissionGate() {
 
     val trackingEnabled = foregroundGranted && backgroundGranted
 
+    if (trackingEnabled) {
+        LocalAppHome(
+            trackingEnabled = true,
+            onOpenSettings = {
+                val intent = Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.fromParts("package", context.packageName, null)
+                )
+                context.startActivity(intent)
+            }
+        )
+        return
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -109,11 +123,7 @@ private fun PermissionGate() {
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = if (trackingEnabled) {
-                "Tracking status: enabled"
-            } else {
-                "Tracking status: disabled until all required permissions are granted"
-            },
+            text = "Tracking status: disabled until all required permissions are granted",
             style = MaterialTheme.typography.bodyLarge
         )
 
@@ -156,17 +166,6 @@ private fun PermissionGate() {
             ) {
                 Text("Grant background location")
             }
-        } else {
-            LocalAppHome(
-                trackingEnabled = trackingEnabled,
-                onOpenSettings = {
-                    val intent = Intent(
-                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-                        Uri.fromParts("package", context.packageName, null)
-                    )
-                    context.startActivity(intent)
-                }
-            )
         }
 
         if (!trackingEnabled) {

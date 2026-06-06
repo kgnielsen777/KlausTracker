@@ -1,5 +1,6 @@
 package com.klaustracker.app.ui
 
+import android.content.pm.ApplicationInfo
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Column
@@ -17,25 +18,52 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlin.math.abs
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+import kotlinx.coroutines.launch
+import androidx.compose.material3.rememberDrawerState
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import org.osmdroid.config.Configuration
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.BoundingBox
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polyline
 
 enum class HomeTab {
     Timeline,
@@ -47,109 +75,141 @@ enum class HomeTab {
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun LocalAppHome(
     onOpenSettings: () -> Unit,
     trackingEnabled: Boolean,
     appViewModel: AppViewModel = viewModel(),
 ) {
+    val context = LocalContext.current
     val uiState by appViewModel.uiState.collectAsStateWithLifecycle()
     var tab by remember { mutableStateOf(HomeTab.Timeline) }
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val demoModeEnabled = remember(context) {
+        (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+    }
 
     LaunchedEffect(trackingEnabled) {
         appViewModel.setTrackingEnabled(trackingEnabled)
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-    ) {
-        Text(
-            text = "KlausTracker",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            text = if (trackingEnabled) {
-                "Tracking enabled"
-            } else {
-                "Tracking disabled"
-            },
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Text(
-            text = if (uiState.periodicCaptureEnabled) {
-                "Background capture: every 30 minutes"
-            } else {
-                "Background capture: off"
-            },
-            style = MaterialTheme.typography.bodySmall,
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            HomeTab.entries.forEach { candidate ->
-                val selected = candidate == tab
-                if (selected) {
-                    Button(onClick = { tab = candidate }, modifier = Modifier.weight(1f)) {
-                        Text(candidate.name)
-                    }
-                } else {
-                    OutlinedButton(onClick = { tab = candidate }, modifier = Modifier.weight(1f)) {
-                        Text(candidate.name)
-                    }
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Navigation",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                HomeTab.entries.forEach { candidate ->
+                    NavigationDrawerItem(
+                        label = { Text(candidate.name) },
+                        selected = tab == candidate,
+                        onClick = {
+                            tab = candidate
+                            scope.launch { drawerState.close() }
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    )
                 }
             }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        when (tab) {
-            HomeTab.Timeline -> {
-                TimelineTab(
-                    isLoading = uiState.isLoading,
-                    captures = uiState.captures,
-                    onAddDemoCapture = appViewModel::addDemoCapture,
+        },
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(text = tab.name) },
+                    navigationIcon = {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Text("Menu")
+                        }
+                    },
                 )
+            },
+            bottomBar = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                ) {
+                    Text(
+                        text = if (trackingEnabled) {
+                            "Tracking enabled"
+                        } else {
+                            "Tracking disabled"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text(
+                        text = if (uiState.periodicCaptureEnabled) {
+                            "Background capture every 30 minutes"
+                        } else {
+                            "Background capture off"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            },
+        ) { innerPadding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(16.dp),
+            ) {
+                when (tab) {
+                    HomeTab.Timeline -> {
+                        TimelineTab(
+                            isLoading = uiState.isLoading,
+                            captures = uiState.timelineCaptures,
+                            demoModeEnabled = demoModeEnabled,
+                            onAddDemoCapture = appViewModel::addDemoCapture,
+                        )
+                    }
+
+                    HomeTab.Map -> MapTab(
+                        captures = uiState.captures,
+                    )
+
+                    HomeTab.Places -> PlacesTab(
+                        places = uiState.places,
+                        actionMessage = uiState.placeActionMessage,
+                        onRelabelPlace = appViewModel::relabelPlace,
+                        onMergePlaces = appViewModel::mergePlaces,
+                        onDismissMessage = appViewModel::clearPlaceActionMessage,
+                    )
+
+                    HomeTab.Suggestions -> SuggestionsTab(
+                        suggestions = uiState.pendingSuggestions,
+                        actionMessage = uiState.placeActionMessage,
+                        onAcceptSuggestion = appViewModel::acceptSuggestion,
+                        onDismissSuggestion = appViewModel::dismissSuggestion,
+                        onDismissMessage = appViewModel::clearPlaceActionMessage,
+                    )
+
+                    HomeTab.Summary -> SummaryTab(
+                        summaries = uiState.placeSummaries,
+                        visitDetails = uiState.visitDetails,
+                        selectedPlaceId = uiState.selectedPlaceId,
+                        selectedVisitId = uiState.selectedVisitId,
+                        summaryPeriod = uiState.selectedSummaryPeriod,
+                        onSummaryPeriodChange = appViewModel::setSummaryPeriod,
+                        onPlaceSelected = appViewModel::selectPlace,
+                        onVisitSelected = appViewModel::selectVisit,
+                    )
+
+                    HomeTab.Settings -> SettingsTab(
+                        onOpenSettings = onOpenSettings,
+                        onCaptureNow = appViewModel::captureNow,
+                        demoModeEnabled = demoModeEnabled,
+                        onAddDemoCapture = appViewModel::addDemoCapture,
+                    )
+                }
             }
-
-            HomeTab.Map -> MapTab(
-                captures = uiState.captures,
-            )
-
-            HomeTab.Places -> PlacesTab(
-                places = uiState.places,
-                actionMessage = uiState.placeActionMessage,
-                onRelabelPlace = appViewModel::relabelPlace,
-                onMergePlaces = appViewModel::mergePlaces,
-                onDismissMessage = appViewModel::clearPlaceActionMessage,
-            )
-            HomeTab.Suggestions -> SuggestionsTab(
-                suggestions = uiState.pendingSuggestions,
-                actionMessage = uiState.placeActionMessage,
-                onAcceptSuggestion = appViewModel::acceptSuggestion,
-                onDismissSuggestion = appViewModel::dismissSuggestion,
-                onDismissMessage = appViewModel::clearPlaceActionMessage,
-            )
-            HomeTab.Summary -> SummaryTab(
-                summaries = uiState.placeSummaries,
-                visitDetails = uiState.visitDetails,
-                selectedPlaceId = uiState.selectedPlaceId,
-                selectedVisitId = uiState.selectedVisitId,
-                summaryPeriod = uiState.selectedSummaryPeriod,
-                onSummaryPeriodChange = appViewModel::setSummaryPeriod,
-                onPlaceSelected = appViewModel::selectPlace,
-                onVisitSelected = appViewModel::selectVisit,
-            )
-            HomeTab.Settings -> SettingsTab(
-                onOpenSettings = onOpenSettings,
-                onCaptureNow = appViewModel::captureNow,
-                onAddDemoCapture = appViewModel::addDemoCapture,
-            )
         }
     }
 }
@@ -158,6 +218,33 @@ fun LocalAppHome(
 private fun MapTab(
     captures: List<com.klaustracker.app.data.local.entity.CapturePointEntity>,
 ) {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val paddingPx = with(LocalDensity.current) { 80.dp.roundToPx() }
+    val mapView = remember {
+        Configuration.getInstance().userAgentValue = context.packageName
+        MapView(context).apply {
+            setTileSource(TileSourceFactory.MAPNIK)
+            setMultiTouchControls(true)
+            controller.setZoom(14.0)
+        }
+    }
+
+    DisposableEffect(lifecycleOwner, mapView) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> mapView.onResume()
+                Lifecycle.Event.ON_PAUSE -> mapView.onPause()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            mapView.onDetach()
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
             text = "Map",
@@ -168,14 +255,14 @@ private fun MapTab(
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = "Local projection of captured path with transit and stay overlays.",
+            text = "OpenStreetMap with zoom/pan, path lines, and motion markers.",
             style = MaterialTheme.typography.bodySmall,
         )
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        if (captures.size < 2) {
-            Text("Need at least 2 captures before rendering map overlays.")
+        if (captures.isEmpty()) {
+            Text("No captures yet. Add demo or live captures to populate the map.")
             return
         }
 
@@ -184,57 +271,73 @@ private fun MapTab(
                 .fillMaxWidth()
                 .height(300.dp),
         ) {
-            Canvas(
+            AndroidView(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(8.dp),
-            ) {
-                val projected = projectCaptures(
-                    captures = captures,
-                    canvasWidth = size.width,
-                    canvasHeight = size.height,
-                )
+                factory = { mapView },
+                update = { view ->
+                    view.overlays.clear()
 
-                drawRect(color = Color(0xFFF3F6F8))
+                    val orderedCaptures = captures.sortedBy { it.timestampUtc }
+                    val points = orderedCaptures.map { GeoPoint(it.latitude, it.longitude) }
+                    val latestCaptureId = orderedCaptures.maxByOrNull { it.timestampUtc }?.id
 
-                for (i in 0 until projected.size - 1) {
-                    val current = projected[i]
-                    val next = projected[i + 1]
-                    drawLine(
-                        color = Color(0xFF8FA1AE),
-                        start = current.point,
-                        end = next.point,
-                        strokeWidth = 2f,
-                    )
-                }
-
-                for (i in 0 until projected.size - 1) {
-                    val current = projected[i]
-                    val next = projected[i + 1]
-                    if (current.bucket == MotionBucket.Transit && next.bucket == MotionBucket.Transit) {
-                        drawLine(
-                            color = Color(0xFFE67E22),
-                            start = current.point,
-                            end = next.point,
-                            strokeWidth = 4f,
-                        )
+                    if (points.size >= 2) {
+                        val polyline = Polyline(view).apply {
+                            setPoints(points)
+                            outlinePaint.color = android.graphics.Color.parseColor("#8FA1AE")
+                            outlinePaint.strokeWidth = 6f
+                        }
+                        view.overlays.add(polyline)
                     }
-                }
 
-                projected.forEach { marker ->
-                    val color = when (marker.bucket) {
-                        MotionBucket.Transit -> Color(0xFFE67E22)
-                        MotionBucket.Stay -> Color(0xFF2E7D32)
-                        MotionBucket.Other -> Color(0xFF1976D2)
+                    orderedCaptures.forEach { capture ->
+                        val isLatest = capture.id == latestCaptureId
+                        val marker = Marker(view).apply {
+                            position = GeoPoint(capture.latitude, capture.longitude)
+                            title = if (isLatest) {
+                                "Latest capture"
+                            } else {
+                                motionLabel(capture.motionState)
+                            }
+                            snippet = buildString {
+                                append(formatTimelineTimestamp(capture.timestampUtc))
+                                append(" | ")
+                                append(motionLabel(capture.motionState))
+                            }
+                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                        }
+                        view.overlays.add(marker)
                     }
-                    val radius = when (marker.bucket) {
-                        MotionBucket.Transit -> 6f
-                        MotionBucket.Stay -> 7f
-                        MotionBucket.Other -> 5f
+
+                    when (points.size) {
+                        0 -> Unit
+                        1 -> {
+                            view.controller.setZoom(16.0)
+                            view.controller.setCenter(points.first())
+                        }
+                        else -> {
+                            val bounds = BoundingBox(
+                                points.maxOf { it.latitude },
+                                points.maxOf { it.longitude },
+                                points.minOf { it.latitude },
+                                points.minOf { it.longitude },
+                            )
+                            view.post {
+                                if (view.width > 0 && view.height > 0) {
+                                    view.zoomToBoundingBox(bounds, true, paddingPx)
+                                } else {
+                                    view.controller.setCenter(points.last())
+                                    view.controller.setZoom(15.0)
+                                }
+                            }
+                        }
                     }
-                    drawCircle(color = color, radius = radius, center = marker.point)
-                }
-            }
+
+                    view.postInvalidate()
+                },
+            )
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -260,41 +363,6 @@ private fun MapLegendItem(color: Color, label: String) {
             }
         }
         Text(text = label, style = MaterialTheme.typography.bodySmall)
-    }
-}
-
-private data class ProjectedCapture(
-    val point: Offset,
-    val bucket: MotionBucket,
-)
-
-private fun projectCaptures(
-    captures: List<com.klaustracker.app.data.local.entity.CapturePointEntity>,
-    canvasWidth: Float,
-    canvasHeight: Float,
-): List<ProjectedCapture> {
-    val minLat = captures.minOf { it.latitude }
-    val maxLat = captures.maxOf { it.latitude }
-    val minLng = captures.minOf { it.longitude }
-    val maxLng = captures.maxOf { it.longitude }
-
-    val latSpan = if (abs(maxLat - minLat) < 0.00001) 0.00001 else maxLat - minLat
-    val lngSpan = if (abs(maxLng - minLng) < 0.00001) 0.00001 else maxLng - minLng
-
-    val left = 24f
-    val right = 24f
-    val top = 24f
-    val bottom = 24f
-    val width = canvasWidth - left - right
-    val height = canvasHeight - top - bottom
-
-    return captures.map { capture ->
-        val x = (((capture.longitude - minLng) / lngSpan).toFloat() * width) + left
-        val y = (((maxLat - capture.latitude) / latSpan).toFloat() * height) + top
-        ProjectedCapture(
-            point = Offset(x, y),
-            bucket = motionBucket(capture.motionState),
-        )
     }
 }
 
@@ -377,7 +445,8 @@ private fun SuggestionsTab(
 @Composable
 private fun TimelineTab(
     isLoading: Boolean,
-    captures: List<com.klaustracker.app.data.local.entity.CapturePointEntity>,
+    captures: List<com.klaustracker.app.data.local.model.CaptureTimelineRow>,
+    demoModeEnabled: Boolean,
     onAddDemoCapture: () -> Unit,
 ) {
     var filter by remember { mutableStateOf(TimelineFilter.All) }
@@ -392,11 +461,13 @@ private fun TimelineTab(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        Button(onClick = onAddDemoCapture, modifier = Modifier.fillMaxWidth()) {
-            Text("Add demo capture")
-        }
+        if (demoModeEnabled) {
+            Button(onClick = onAddDemoCapture, modifier = Modifier.fillMaxWidth()) {
+                Text("Add demo capture")
+            }
 
-        Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+        }
 
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -426,7 +497,13 @@ private fun TimelineTab(
         }
 
         if (filteredCaptures.isEmpty()) {
-            Text("No captures yet. Tap 'Add demo capture' to seed local timeline.")
+            Text(
+                if (demoModeEnabled) {
+                    "No captures yet. Tap 'Add demo capture' to seed local timeline."
+                } else {
+                    "No captures yet. Live captures will appear here after tracking records them."
+                }
+            )
             return
         }
 
@@ -444,9 +521,12 @@ private fun TimelineTab(
                     colors = CardDefaults.cardColors(containerColor = cardColor),
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
-                        Text(text = capture.timestampUtc, style = MaterialTheme.typography.bodyMedium)
                         Text(
-                            text = "Lat ${capture.latitude}, Lng ${capture.longitude}",
+                            text = formatTimelineTimestamp(capture.timestampUtc),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            text = "Lat ${formatCoordinate(capture.latitude)}, Lng ${formatCoordinate(capture.longitude)}",
                             style = MaterialTheme.typography.bodySmall,
                         )
                         Text(
@@ -454,6 +534,24 @@ private fun TimelineTab(
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Medium,
                         )
+                        Text(
+                            text = "Speed: ${formatSpeed(capture.speedKmh)}",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Text(
+                            text = "Address: ${capture.enrichedAddress ?: "Unavailable"}",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Text(
+                            text = "POI: ${capture.poiName ?: "Unavailable"} (${capture.poiType ?: "n/a"})",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        if (capture.isHotel == true) {
+                            Text(
+                                text = "Hotel match",
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                         Text(
                             text = "Source: ${capture.source} | Motion: ${capture.motionState}",
                             style = MaterialTheme.typography.bodySmall,
@@ -504,6 +602,30 @@ private fun motionLabel(motionState: String): String {
     }
 }
 
+private val timelineTimestampFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+
+private fun formatTimelineTimestamp(timestampUtc: String): String {
+    val localDateTime = runCatching {
+        Instant.parse(timestampUtc)
+            .atZone(ZoneId.systemDefault())
+            .toLocalDateTime()
+    }.getOrNull() ?: return timestampUtc
+
+    return timelineTimestampFormatter.format(localDateTime)
+}
+
+private fun formatCoordinate(value: Double): String =
+    String.format(Locale.US, "%.5f", value)
+
+private fun formatSpeed(speedKmh: Float?): String {
+    return if (speedKmh == null) {
+        "Unavailable"
+    } else {
+        String.format(Locale.US, "%.1f km/h", speedKmh)
+    }
+}
+
 @Composable
 private fun PlacesTab(
     places: List<com.klaustracker.app.data.local.entity.PlaceEntity>,
@@ -529,7 +651,7 @@ private fun PlacesTab(
         Spacer(modifier = Modifier.height(8.dp))
 
         if (places.isEmpty()) {
-            Text("No places yet. A demo place is created when you add the first demo capture.")
+            Text("No places yet. Detected stays will appear here after enough location history is collected.")
             return
         }
 
@@ -795,6 +917,7 @@ private fun SummaryTab(
 private fun SettingsTab(
     onOpenSettings: () -> Unit,
     onCaptureNow: () -> Unit,
+    demoModeEnabled: Boolean,
     onAddDemoCapture: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
@@ -822,8 +945,10 @@ private fun SettingsTab(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        OutlinedButton(onClick = onAddDemoCapture, modifier = Modifier.fillMaxWidth()) {
-            Text("Insert demo capture")
+        if (demoModeEnabled) {
+            OutlinedButton(onClick = onAddDemoCapture, modifier = Modifier.fillMaxWidth()) {
+                Text("Insert demo capture")
+            }
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.klaustracker.app.data.local
 
 import android.content.Context
+import android.database.sqlite.SQLiteException
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
@@ -82,16 +83,33 @@ abstract class TrackerDatabase : RoomDatabase() {
 
         fun getInstance(context: Context): TrackerDatabase {
             return instance ?: synchronized(this) {
-                instance ?: Room.databaseBuilder(
-                    context.applicationContext,
-                    TrackerDatabase::class.java,
-                    DB_NAME,
-                )
-                    .openHelperFactory(DatabaseEncryption.supportFactory(context))
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
-                    .build()
-                    .also { instance = it }
+                instance ?: run {
+                    val appContext = context.applicationContext
+                    val initial = buildDatabase(appContext)
+                    val verified = try {
+                        initial.openHelper.writableDatabase
+                        initial
+                    } catch (_: SQLiteException) {
+                        initial.close()
+                        appContext.deleteDatabase(DB_NAME)
+                        val recreated = buildDatabase(appContext)
+                        recreated.openHelper.writableDatabase
+                        recreated
+                    }
+                    verified.also { instance = it }
+                }
             }
+        }
+
+        private fun buildDatabase(context: Context): TrackerDatabase {
+            return Room.databaseBuilder(
+                context,
+                TrackerDatabase::class.java,
+                DB_NAME,
+            )
+                .openHelperFactory(DatabaseEncryption.supportFactory(context))
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .build()
         }
     }
 }

@@ -1,5 +1,9 @@
 # KlausTracker
 
+## Local setup
+
+The app now uses OpenStreetMap tiles through `osmdroid`, so no map API key is required for local development.
+
 Personal Android location journal app.
 
 ## Current State

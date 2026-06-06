@@ -8,6 +8,7 @@ import com.klaustracker.app.data.local.entity.PlaceEntity
 import com.klaustracker.app.data.local.entity.PlaceSuggestionEntity
 import com.klaustracker.app.data.local.entity.StaySegmentEntity
 import com.klaustracker.app.data.local.entity.VisitEntity
+import com.klaustracker.app.data.local.model.CaptureTimelineRow
 import com.klaustracker.app.data.local.model.PlaceDurationSummaryRow
 import com.klaustracker.app.data.local.model.PlaceSuggestionRow
 import com.klaustracker.app.data.local.model.VisitDetailRow
@@ -26,6 +27,9 @@ class TrackerRepository(
 ) {
     fun observeRecentCaptures(limit: Int = 20): Flow<List<CapturePointEntity>> =
         database.capturePointDao().observeRecent(limit)
+
+    fun observeRecentTimelineCaptures(limit: Int = 20): Flow<List<CaptureTimelineRow>> =
+        database.capturePointDao().observeRecentWithEnrichment(limit)
 
     fun observeActivePlaces(): Flow<List<PlaceEntity>> =
         database.placeDao().observeActivePlaces()
@@ -244,9 +248,13 @@ class TrackerRepository(
         return enrichedCount
     }
 
-    private suspend fun detectAndPersistStayIfNeeded() {
+    suspend fun refreshDetectedPlacesFromRecentCaptures(limit: Int = PLACE_BACKFILL_CAPTURE_LIMIT) {
+        detectAndPersistStayIfNeeded(limit)
+    }
+
+    private suspend fun detectAndPersistStayIfNeeded(limit: Int = 8) {
         val samples = database.capturePointDao()
-            .recent(8)
+            .recent(limit)
             .asReversed()
             .mapNotNull { point ->
                 runCatching {
@@ -348,6 +356,7 @@ class TrackerRepository(
         private const val RECURRING_MIN_VISITS = 3
         private const val RECURRING_MIN_DURATION_MINUTES = 180
         private const val ENRICHMENT_RETRY_BATCH_SIZE = 25
+        private const val PLACE_BACKFILL_CAPTURE_LIMIT = 48
     }
 
     private suspend fun ensureDemoPlaceAndVisit(now: String) {

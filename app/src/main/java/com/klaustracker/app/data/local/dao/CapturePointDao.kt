@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Query
 import androidx.room.Upsert
 import com.klaustracker.app.data.local.entity.CapturePointEntity
+import com.klaustracker.app.data.local.model.CaptureTimelineRow
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -16,6 +17,30 @@ interface CapturePointDao {
 
     @Query("SELECT * FROM capture_points ORDER BY timestamp_utc DESC LIMIT :limit")
     fun observeRecent(limit: Int): Flow<List<CapturePointEntity>>
+
+    @Query(
+        """
+        SELECT
+            c.id AS id,
+            c.timestamp_utc AS timestampUtc,
+            c.latitude AS latitude,
+            c.longitude AS longitude,
+            c.accuracy_meters AS accuracyMeters,
+            c.speed_kmh AS speedKmh,
+            c.motion_state AS motionState,
+            c.source AS source,
+            c.enrichment_status AS enrichmentStatus,
+            e.formatted_address AS enrichedAddress,
+            e.poi_name AS poiName,
+            e.poi_type AS poiType,
+            e.is_hotel AS isHotel
+        FROM capture_points c
+        LEFT JOIN enrichments e ON e.capture_point_id = c.id
+        ORDER BY c.timestamp_utc DESC
+        LIMIT :limit
+        """
+    )
+    fun observeRecentWithEnrichment(limit: Int): Flow<List<CaptureTimelineRow>>
 
     @Query("SELECT COUNT(*) FROM capture_points")
     suspend fun count(): Int

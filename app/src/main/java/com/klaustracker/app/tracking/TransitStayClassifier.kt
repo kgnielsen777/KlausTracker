@@ -36,7 +36,10 @@ object TransitStayClassifier {
         stillSpeedKmh: Float = DEFAULT_STILL_SPEED_KMH,
     ): StaySegmentDraft? {
         val stationarySamples = samples
-            .filter { classifyMotionState(it.speedKmh, stillSpeedKmh = stillSpeedKmh) == MOTION_STAY_CANDIDATE }
+            .filter { sample ->
+                sample.speedKmh == null ||
+                    classifyMotionState(sample.speedKmh, stillSpeedKmh = stillSpeedKmh) == MOTION_STAY_CANDIDATE
+            }
             .sortedBy { it.timestampUtc }
 
         if (stationarySamples.size < 2) {
