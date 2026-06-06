@@ -5,9 +5,11 @@ import com.klaustracker.app.data.local.TrackerDatabase
 import com.klaustracker.app.data.local.entity.CapturePointEntity
 import com.klaustracker.app.data.local.entity.EnrichmentEntity
 import com.klaustracker.app.data.local.entity.PlaceEntity
+import com.klaustracker.app.data.local.entity.PlaceSuggestionEntity
 import com.klaustracker.app.data.local.entity.StaySegmentEntity
 import com.klaustracker.app.data.local.entity.VisitEntity
 import com.klaustracker.app.data.local.model.PlaceDurationSummaryRow
+import com.klaustracker.app.data.local.model.PlaceSuggestionRow
 import com.klaustracker.app.data.local.model.VisitDetailRow
 import com.klaustracker.app.tracking.EnrichmentDraft
 import com.klaustracker.app.tracking.CaptureSample
@@ -32,6 +34,65 @@ class TrackerRepository(
     fun observeVisitDetailsForPlace(placeId: String): Flow<List<VisitDetailRow>> =
         database.visitDao().observeVisitDetailsForPlace(placeId)
 
+    fun observePendingPlaceSuggestions(): Flow<List<PlaceSuggestionRow>> =
+        database.placeSuggestionDao().observePendingSuggestions()
+
+    suspend fun refreshRecurringSuggestions(summaries: List<PlaceDurationSummaryRow>) {
+        val now = Instant.now().toString()
+        summaries.forEach { summary ->
+            if (summary.labelType != "detected") {
+                return@forEach
+            }
+            if (summary.visitCount < RECURRING_MIN_VISITS || summary.totalDurationMinutes < RECURRING_MIN_DURATION_MINUTES) {
+                return@forEach
+            }
+
+            val latestSuggestion = database.placeSuggestionDao().latestForPlace(summary.placeId)
+            if (latestSuggestion?.status == "pending" || latestSuggestion?.status == "accepted") {
+                return@forEach
+            }
+
+            val suggestedLabel = inferSuggestedLabel(summary)
+            database.placeSuggestionDao().upsert(
+                PlaceSuggestionEntity(
+                    id = UUID.randomUUID().toString(),
+                    placeId = summary.placeId,
+                    suggestedLabelType = suggestedLabel,
+                    reason = "Frequent repeated stays",
+                    confidence = suggestionConfidence(summary),
+                    status = "pending",
+                    createdUtc = now,
+                    updatedUtc = now,
+                )
+            )
+        }
+    }
+
+    suspend fun acceptSuggestion(suggestionId: String): Boolean {
+        val suggestion = database.placeSuggestionDao().byId(suggestionId) ?: return false
+        val place = database.placeDao().byId(suggestion.placeId) ?: return false
+        val now = Instant.now().toString()
+
+        database.withTransaction {
+            database.placeDao().updateLabel(
+                placeId = place.id,
+                labelType = suggestion.suggestedLabelType,
+                customLabel = place.customLabel,
+                canonicalName = canonicalNameForLabel(place.canonicalName, suggestion.suggestedLabelType, place.customLabel),
+                updatedUtc = now,
+            )
+            database.placeSuggestionDao().updateStatus(suggestionId, "accepted", now)
+        }
+
+        return true
+    }
+
+    suspend fun dismissSuggestion(suggestionId: String): Boolean {
+        val suggestion = database.placeSuggestionDao().byId(suggestionId) ?: return false
+        database.placeSuggestionDao().updateStatus(suggestion.id, "dismissed", Instant.now().toString())
+        return true
+    }
+
     suspend fun updatePlaceLabel(
         placeId: String,
         labelType: String,
@@ -39,14 +100,7 @@ class TrackerRepository(
     ): Boolean {
         val place = database.placeDao().byId(placeId) ?: return false
         val normalizedCustom = customLabel?.trim().takeIf { !it.isNullOrBlank() }
-        val canonicalName = when (labelType) {
-            "home" -> "Home"
-            "work" -> "Work"
-            "friend" -> "Friend"
-            "family" -> "Family"
-            "custom" -> normalizedCustom ?: place.canonicalName
-            else -> place.canonicalName
-        }
+        val canonicalName = canonicalNameForLabel(place.canonicalName, labelType, normalizedCustom)
 
         database.placeDao().updateLabel(
             placeId = placeId,
@@ -254,6 +308,45 @@ class TrackerRepository(
 
     private fun roundCoordinate(value: Double): String =
         String.format(Locale.US, "%.4f", value)
+
+    private fun canonicalNameForLabel(currentName: String, labelType: String, customLabel: String?): String {
+        return when (labelType) {
+            "home" -> "Home"
+            "work" -> "Work"
+            "friend" -> "Friend"
+            "family" -> "Family"
+            "custom" -> customLabel ?: currentName
+            else -> currentName
+        }
+    }
+
+    private fun inferSuggestedLabel(summary: PlaceDurationSummaryRow): String {
+        val text = listOfNotNull(summary.placeName, summary.defaultAddress)
+            .joinToString(" ")
+            .lowercase()
+        return if (
+            text.contains("office") ||
+            text.contains("company") ||
+            text.contains("business") ||
+            text.contains("workspace") ||
+            text.contains("work")
+        ) {
+            "work"
+        } else {
+            "home"
+        }
+    }
+
+    private fun suggestionConfidence(summary: PlaceDurationSummaryRow): Float {
+        val durationScore = (summary.totalDurationMinutes / 600f).coerceAtMost(1f)
+        val visitScore = (summary.visitCount / 10f).coerceAtMost(1f)
+        return (0.5f + (durationScore + visitScore) / 4f).coerceAtMost(0.95f)
+    }
+
+    companion object {
+        private const val RECURRING_MIN_VISITS = 3
+        private const val RECURRING_MIN_DURATION_MINUTES = 180
+    }
 
     private suspend fun ensureDemoPlaceAndVisit(now: String) {
         if (database.placeDao().count() > 0) {

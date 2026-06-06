@@ -8,6 +8,7 @@ import com.klaustracker.app.data.local.TrackerDatabaseProvider
 import com.klaustracker.app.data.local.entity.CapturePointEntity
 import com.klaustracker.app.data.local.entity.PlaceEntity
 import com.klaustracker.app.data.local.model.PlaceDurationSummaryRow
+import com.klaustracker.app.data.local.model.PlaceSuggestionRow
 import com.klaustracker.app.data.local.model.VisitDetailRow
 import com.klaustracker.app.tracking.TrackingScheduler
 import java.time.Instant
@@ -24,6 +25,7 @@ data class AppUiState(
     val captures: List<CapturePointEntity> = emptyList(),
     val places: List<PlaceEntity> = emptyList(),
     val placeSummaries: List<PlaceDurationSummaryRow> = emptyList(),
+    val pendingSuggestions: List<PlaceSuggestionRow> = emptyList(),
     val visitDetails: List<VisitDetailRow> = emptyList(),
     val isLoading: Boolean = true,
     val periodicCaptureEnabled: Boolean = false,
@@ -69,6 +71,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 .flatMapLatest { period -> repository.observePlaceDurationSummaries(period.sinceUtc()) }
                 .collect { summaries ->
                 _uiState.update { it.copy(placeSummaries = summaries) }
+                repository.refreshRecurringSuggestions(summaries)
+            }
+        }
+
+        viewModelScope.launch {
+            repository.observePendingPlaceSuggestions().collect { suggestions ->
+                _uiState.update { it.copy(pendingSuggestions = suggestions) }
             }
         }
     }
@@ -151,6 +160,36 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearPlaceActionMessage() {
         _uiState.update { it.copy(placeActionMessage = null) }
+    }
+
+    fun acceptSuggestion(suggestionId: String) {
+        viewModelScope.launch {
+            val success = repository.acceptSuggestion(suggestionId)
+            _uiState.update {
+                it.copy(
+                    placeActionMessage = if (success) {
+                        "Suggestion accepted."
+                    } else {
+                        "Could not accept suggestion."
+                    }
+                )
+            }
+        }
+    }
+
+    fun dismissSuggestion(suggestionId: String) {
+        viewModelScope.launch {
+            val success = repository.dismissSuggestion(suggestionId)
+            _uiState.update {
+                it.copy(
+                    placeActionMessage = if (success) {
+                        "Suggestion dismissed."
+                    } else {
+                        "Could not dismiss suggestion."
+                    }
+                )
+            }
+        }
     }
 
     fun setSummaryPeriod(period: SummaryPeriod) {

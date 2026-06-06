@@ -71,4 +71,56 @@ class TrackerDatabaseMigrationTest {
         }
         db.close()
     }
+
+    @Test
+    fun migrate2To3_addsPlaceSuggestionsTable() {
+        helper.createDatabase(dbName, 2).apply {
+            execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS places (
+                    id TEXT NOT NULL PRIMARY KEY,
+                    canonical_name TEXT NOT NULL,
+                    label_type TEXT NOT NULL,
+                    custom_label TEXT,
+                    default_address TEXT,
+                    centroid_lat REAL NOT NULL,
+                    centroid_lng REAL NOT NULL,
+                    active INTEGER NOT NULL,
+                    created_utc TEXT NOT NULL,
+                    updated_utc TEXT NOT NULL
+                )
+                """.trimIndent()
+            )
+            close()
+        }
+
+        helper.runMigrationsAndValidate(
+            dbName,
+            3,
+            true,
+            TrackerDatabase.MIGRATION_2_3,
+        )
+
+        val db = Room.databaseBuilder(
+            InstrumentationRegistry.getInstrumentation().targetContext,
+            TrackerDatabase::class.java,
+            dbName,
+        )
+            .addMigrations(TrackerDatabase.MIGRATION_1_2, TrackerDatabase.MIGRATION_2_3)
+            .allowMainThreadQueries()
+            .build()
+
+        db.openHelper.writableDatabase.query("PRAGMA table_info(place_suggestions)").use { cursor ->
+            var hasPlaceId = false
+            while (cursor.moveToNext()) {
+                val columnName = cursor.getString(cursor.getColumnIndexOrThrow("name"))
+                if (columnName == "place_id") {
+                    hasPlaceId = true
+                    break
+                }
+            }
+            check(hasPlaceId) { "Expected place_suggestions table with place_id column after migration" }
+        }
+        db.close()
+    }
 }

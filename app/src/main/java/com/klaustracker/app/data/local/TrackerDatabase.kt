@@ -10,12 +10,14 @@ import com.klaustracker.app.data.local.dao.BackupManifestDao
 import com.klaustracker.app.data.local.dao.CapturePointDao
 import com.klaustracker.app.data.local.dao.EnrichmentDao
 import com.klaustracker.app.data.local.dao.PlaceDao
+import com.klaustracker.app.data.local.dao.PlaceSuggestionDao
 import com.klaustracker.app.data.local.dao.StaySegmentDao
 import com.klaustracker.app.data.local.dao.VisitDao
 import com.klaustracker.app.data.local.entity.BackupManifestEntity
 import com.klaustracker.app.data.local.entity.CapturePointEntity
 import com.klaustracker.app.data.local.entity.EnrichmentEntity
 import com.klaustracker.app.data.local.entity.PlaceEntity
+import com.klaustracker.app.data.local.entity.PlaceSuggestionEntity
 import com.klaustracker.app.data.local.entity.StaySegmentEntity
 import com.klaustracker.app.data.local.entity.VisitEntity
 
@@ -25,10 +27,11 @@ import com.klaustracker.app.data.local.entity.VisitEntity
         EnrichmentEntity::class,
         StaySegmentEntity::class,
         PlaceEntity::class,
+        PlaceSuggestionEntity::class,
         VisitEntity::class,
         BackupManifestEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class TrackerDatabase : RoomDatabase() {
@@ -36,6 +39,7 @@ abstract class TrackerDatabase : RoomDatabase() {
     abstract fun enrichmentDao(): EnrichmentDao
     abstract fun staySegmentDao(): StaySegmentDao
     abstract fun placeDao(): PlaceDao
+    abstract fun placeSuggestionDao(): PlaceSuggestionDao
     abstract fun visitDao(): VisitDao
     abstract fun backupManifestDao(): BackupManifestDao
 
@@ -51,6 +55,28 @@ abstract class TrackerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS place_suggestions (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        place_id TEXT NOT NULL,
+                        suggested_label_type TEXT NOT NULL,
+                        reason TEXT NOT NULL,
+                        confidence REAL NOT NULL,
+                        status TEXT NOT NULL,
+                        created_utc TEXT NOT NULL,
+                        updated_utc TEXT NOT NULL,
+                        FOREIGN KEY(place_id) REFERENCES places(id) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_place_suggestions_place_id ON place_suggestions(place_id)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_place_suggestions_status ON place_suggestions(status)")
+            }
+        }
+
         @Volatile
         private var instance: TrackerDatabase? = null
 
@@ -61,7 +87,7 @@ abstract class TrackerDatabase : RoomDatabase() {
                     TrackerDatabase::class.java,
                     DB_NAME,
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { instance = it }
             }

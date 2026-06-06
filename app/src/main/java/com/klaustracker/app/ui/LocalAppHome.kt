@@ -32,6 +32,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 enum class HomeTab {
     Timeline,
     Places,
+    Suggestions,
     Summary,
     Settings,
 }
@@ -114,6 +115,13 @@ fun LocalAppHome(
                 onMergePlaces = appViewModel::mergePlaces,
                 onDismissMessage = appViewModel::clearPlaceActionMessage,
             )
+            HomeTab.Suggestions -> SuggestionsTab(
+                suggestions = uiState.pendingSuggestions,
+                actionMessage = uiState.placeActionMessage,
+                onAcceptSuggestion = appViewModel::acceptSuggestion,
+                onDismissSuggestion = appViewModel::dismissSuggestion,
+                onDismissMessage = appViewModel::clearPlaceActionMessage,
+            )
             HomeTab.Summary -> SummaryTab(
                 summaries = uiState.placeSummaries,
                 visitDetails = uiState.visitDetails,
@@ -129,6 +137,82 @@ fun LocalAppHome(
                 onCaptureNow = appViewModel::captureNow,
                 onAddDemoCapture = appViewModel::addDemoCapture,
             )
+        }
+    }
+}
+
+@Composable
+private fun SuggestionsTab(
+    suggestions: List<com.klaustracker.app.data.local.model.PlaceSuggestionRow>,
+    actionMessage: String?,
+    onAcceptSuggestion: (String) -> Unit,
+    onDismissSuggestion: (String) -> Unit,
+    onDismissMessage: () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Text(
+            text = "Suggestions",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        if (!actionMessage.isNullOrBlank()) {
+            Text(text = actionMessage, style = MaterialTheme.typography.bodySmall)
+            OutlinedButton(
+                onClick = onDismissMessage,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 6.dp),
+            ) {
+                Text("Dismiss")
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        if (suggestions.isEmpty()) {
+            Text("No pending suggestions yet. Keep tracking to build recurring-place hints.")
+            return
+        }
+
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(suggestions) { suggestion ->
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(suggestion.placeName, style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            text = suggestion.defaultAddress ?: suggestion.customLabel ?: suggestion.labelType,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Text(
+                            text = "Suggest label: ${suggestion.suggestedLabelType} (${(suggestion.confidence * 100).toInt()}%)",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Text(
+                            text = suggestion.reason,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                            Button(
+                                onClick = { onAcceptSuggestion(suggestion.suggestionId) },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Text("Accept")
+                            }
+                            OutlinedButton(
+                                onClick = { onDismissSuggestion(suggestion.suggestionId) },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Text("Dismiss")
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
