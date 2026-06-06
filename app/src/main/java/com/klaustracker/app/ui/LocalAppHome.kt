@@ -1,6 +1,7 @@
 package com.klaustracker.app.ui
 
 import android.content.pm.ApplicationInfo
+import android.preference.PreferenceManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Column
@@ -219,13 +220,20 @@ private fun MapTab(
     captures: List<com.klaustracker.app.data.local.entity.CapturePointEntity>,
 ) {
     val context = LocalContext.current
+    val appContext = context.applicationContext
     val lifecycleOwner = LocalLifecycleOwner.current
     val paddingPx = with(LocalDensity.current) { 80.dp.roundToPx() }
     val mapView = remember {
-        Configuration.getInstance().userAgentValue = context.packageName
+        Configuration.getInstance().load(
+            appContext,
+            PreferenceManager.getDefaultSharedPreferences(appContext),
+        )
+        Configuration.getInstance().userAgentValue = appContext.packageName
         MapView(context).apply {
             setTileSource(TileSourceFactory.MAPNIK)
             setMultiTouchControls(true)
+            setUseDataConnection(true)
+            setTilesScaledToDpi(true)
             controller.setZoom(14.0)
         }
     }
@@ -240,6 +248,10 @@ private fun MapTab(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            Configuration.getInstance().save(
+                appContext,
+                PreferenceManager.getDefaultSharedPreferences(appContext),
+            )
             lifecycleOwner.lifecycle.removeObserver(observer)
             mapView.onDetach()
         }
@@ -260,11 +272,6 @@ private fun MapTab(
         )
 
         Spacer(modifier = Modifier.height(8.dp))
-
-        if (captures.isEmpty()) {
-            Text("No captures yet. Add demo or live captures to populate the map.")
-            return
-        }
 
         Card(
             modifier = Modifier
@@ -312,7 +319,10 @@ private fun MapTab(
                     }
 
                     when (points.size) {
-                        0 -> Unit
+                        0 -> {
+                            view.controller.setZoom(5.0)
+                            view.controller.setCenter(GeoPoint(56.2639, 9.5018))
+                        }
                         1 -> {
                             view.controller.setZoom(16.0)
                             view.controller.setCenter(points.first())
@@ -338,6 +348,11 @@ private fun MapTab(
                     view.postInvalidate()
                 },
             )
+        }
+
+        if (captures.isEmpty()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("No captures yet. Map tiles are shown; overlays appear after live captures are recorded.")
         }
 
         Spacer(modifier = Modifier.height(8.dp))
