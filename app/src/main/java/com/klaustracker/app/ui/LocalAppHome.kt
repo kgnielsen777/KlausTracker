@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -33,6 +34,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
@@ -483,6 +485,7 @@ private fun TimelineTab(
     onDismissUndo: () -> Unit,
 ) {
     var filter by remember { mutableStateOf(TimelineFilter.All) }
+    var pendingDeleteCaptureId by remember { mutableStateOf<String?>(null) }
     val filteredCaptures = captures.filter { filter.matches(it.motionState) }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -577,8 +580,8 @@ private fun TimelineTab(
                 val dismissState = rememberSwipeToDismissBoxState(
                     confirmValueChange = { value ->
                         if (value == SwipeToDismissBoxValue.EndToStart) {
-                            onDeleteCapture(capture.id)
-                            true
+                            pendingDeleteCaptureId = capture.id
+                            false
                         } else {
                             false
                         }
@@ -647,6 +650,32 @@ private fun TimelineTab(
                     }
                 }
             }
+        }
+
+        if (pendingDeleteCaptureId != null) {
+            AlertDialog(
+                onDismissRequest = { pendingDeleteCaptureId = null },
+                title = { Text("Delete timeline location?") },
+                text = { Text("This will remove the location from timeline. You can undo for the next 15 seconds.") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val captureId = pendingDeleteCaptureId
+                            if (captureId != null) {
+                                onDeleteCapture(captureId)
+                            }
+                            pendingDeleteCaptureId = null
+                        }
+                    ) {
+                        Text("Delete")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingDeleteCaptureId = null }) {
+                        Text("Cancel")
+                    }
+                },
+            )
         }
     }
 }
@@ -730,6 +759,7 @@ private fun PlacesTab(
     var selectedPlaceId by remember { mutableStateOf<String?>(null) }
     var mergeTargetPlaceId by remember { mutableStateOf<String?>(null) }
     var customLabel by remember { mutableStateOf("") }
+    var pendingDeletePlaceId by remember { mutableStateOf<String?>(null) }
 
     val selectedPlace = places.firstOrNull { it.id == selectedPlaceId }
     val mergeCandidates = places.filter { it.id != selectedPlaceId }
@@ -885,13 +915,8 @@ private fun PlacesTab(
                 val dismissState = rememberSwipeToDismissBoxState(
                     confirmValueChange = { value ->
                         if (value == SwipeToDismissBoxValue.EndToStart) {
-                            onDeletePlace(place.id)
-                            if (selectedPlaceId == place.id) {
-                                selectedPlaceId = null
-                                mergeTargetPlaceId = null
-                                customLabel = ""
-                            }
-                            true
+                            pendingDeletePlaceId = place.id
+                            false
                         } else {
                             false
                         }
@@ -945,6 +970,37 @@ private fun PlacesTab(
                     }
                 }
             }
+        }
+
+        if (pendingDeletePlaceId != null) {
+            AlertDialog(
+                onDismissRequest = { pendingDeletePlaceId = null },
+                title = { Text("Delete place?") },
+                text = { Text("This will remove the place from active places. You can undo for the next 15 seconds.") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            val placeId = pendingDeletePlaceId
+                            if (placeId != null) {
+                                onDeletePlace(placeId)
+                                if (selectedPlaceId == placeId) {
+                                    selectedPlaceId = null
+                                    mergeTargetPlaceId = null
+                                    customLabel = ""
+                                }
+                            }
+                            pendingDeletePlaceId = null
+                        }
+                    ) {
+                        Text("Delete")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingDeletePlaceId = null }) {
+                        Text("Cancel")
+                    }
+                },
+            )
         }
     }
 }

@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 data class AppUiState(
     val captures: List<CapturePointEntity> = emptyList(),
@@ -58,10 +59,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<AppUiState> = _uiState.asStateFlow()
     private var lastDeletedCaptureSnapshot: TrackerRepository.DeletedCaptureSnapshot? = null
     private var lastDeletedPlaceSnapshot: TrackerRepository.DeletedPlaceSnapshot? = null
+    private var timelineUndoAutoDismissJob: Job? = null
+    private var placeUndoAutoDismissJob: Job? = null
 
     init {
         viewModelScope.launch {
+            repository.backfillUnknownMotionStatesForMissingSpeed()
             repository.refreshDetectedPlacesFromRecentCaptures()
+            repository.consolidateActivePlacesByAddress()
         }
 
         viewModelScope.launch {
@@ -135,6 +140,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     },
                 )
             }
+            timelineUndoAutoDismissJob?.cancel()
+            if (snapshot != null) {
+                timelineUndoAutoDismissJob = viewModelScope.launch {
+                    delay(UNDO_VISIBILITY_MILLIS)
+                    if (lastDeletedCaptureSnapshot != null) {
+                        dismissTimelineUndo()
+                    }
+                }
+            }
         }
     }
 
@@ -142,6 +156,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val snapshot = lastDeletedCaptureSnapshot ?: return@launch
             repository.restoreDeletedCapture(snapshot)
+            timelineUndoAutoDismissJob?.cancel()
             lastDeletedCaptureSnapshot = null
             _uiState.update {
                 it.copy(
@@ -153,6 +168,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun dismissTimelineUndo() {
+        timelineUndoAutoDismissJob?.cancel()
         lastDeletedCaptureSnapshot = null
         _uiState.update {
             it.copy(
@@ -234,6 +250,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                     placeActionMessage = if (snapshot == null) "Could not remove place." else null,
                 )
             }
+            placeUndoAutoDismissJob?.cancel()
+            if (snapshot != null) {
+                placeUndoAutoDismissJob = viewModelScope.launch {
+                    delay(UNDO_VISIBILITY_MILLIS)
+                    if (lastDeletedPlaceSnapshot != null) {
+                        dismissPlaceUndo()
+                    }
+                }
+            }
         }
     }
 
@@ -241,6 +266,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val snapshot = lastDeletedPlaceSnapshot ?: return@launch
             repository.restoreDeletedPlace(snapshot)
+            placeUndoAutoDismissJob?.cancel()
             lastDeletedPlaceSnapshot = null
             _uiState.update {
                 it.copy(
@@ -252,6 +278,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun dismissPlaceUndo() {
+        placeUndoAutoDismissJob?.cancel()
         lastDeletedPlaceSnapshot = null
         _uiState.update {
             it.copy(
@@ -302,5 +329,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun SummaryPeriod.sinceUtc(): String {
         return Instant.now().minusSeconds(daysBack * 24 * 60 * 60).toString()
+    }
+
+    private companion object {
+        const val UNDO_VISIBILITY_MILLIS = 15_000L
     }
 }

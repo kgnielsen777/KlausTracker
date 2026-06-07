@@ -349,6 +349,36 @@ class TrackerRepository(
         backfillMissingPlaceAddresses()
     }
 
+    suspend fun consolidateActivePlacesByAddress(): Int {
+        val activePlaces = database.placeDao().activePlaces()
+        val groups = activePlaces
+            .filter { !it.defaultAddress.isNullOrBlank() }
+            .groupBy { it.defaultAddress!!.trim().lowercase() }
+
+        var mergedCount = 0
+        groups.values.forEach { group ->
+            if (group.size < 2) {
+                return@forEach
+            }
+
+            val target = group.minByOrNull { it.createdUtc } ?: return@forEach
+            group.forEach { source ->
+                if (source.id == target.id) {
+                    return@forEach
+                }
+                if (mergePlaces(source.id, target.id)) {
+                    mergedCount += 1
+                }
+            }
+        }
+
+        return mergedCount
+    }
+
+    suspend fun backfillUnknownMotionStatesForMissingSpeed(): Int {
+        return database.capturePointDao().backfillUnknownMotionForMissingSpeed()
+    }
+
     suspend fun backfillMissingPlaceAddresses(): Int {
         return database.placeDao().backfillMissingAddresses(Instant.now().toString())
     }
@@ -375,8 +405,24 @@ class TrackerRepository(
     private suspend fun persistStay(stayDraft: com.klaustracker.app.tracking.StaySegmentDraft) {
         val roundedLat = roundCoordinate(stayDraft.centroidLat)
         val roundedLng = roundCoordinate(stayDraft.centroidLng)
+        val now = Instant.now().toString()
 
-        val placeId = stableId(
+        val existingNearbyPlace = database.placeDao()
+            .activePlaces()
+            .asSequence()
+            .map { place ->
+                place to distanceMeters(
+                    stayDraft.centroidLat,
+                    stayDraft.centroidLng,
+                    place.centroidLat,
+                    place.centroidLng,
+                )
+            }
+            .filter { (_, meters) -> meters <= PLACE_REUSE_RADIUS_METERS }
+            .minByOrNull { (_, meters) -> meters }
+            ?.first
+
+        val placeId = existingNearbyPlace?.id ?: stableId(
             prefix = "place",
             stayDraft.startUtc.toString(),
             stayDraft.endUtc.toString(),
@@ -391,22 +437,30 @@ class TrackerRepository(
             roundedLng,
         )
         val visitId = stableId(prefix = "visit", stayId)
-        val now = Instant.now().toString()
 
-        database.placeDao().upsert(
-            PlaceEntity(
-                id = placeId,
-                canonicalName = "Detected place",
-                labelType = "detected",
-                customLabel = null,
-                defaultAddress = null,
-                centroidLat = stayDraft.centroidLat,
-                centroidLng = stayDraft.centroidLng,
-                active = true,
-                createdUtc = now,
-                updatedUtc = now,
+        if (existingNearbyPlace == null) {
+            database.placeDao().upsert(
+                PlaceEntity(
+                    id = placeId,
+                    canonicalName = "Detected place",
+                    labelType = "detected",
+                    customLabel = null,
+                    defaultAddress = null,
+                    centroidLat = stayDraft.centroidLat,
+                    centroidLng = stayDraft.centroidLng,
+                    active = true,
+                    createdUtc = now,
+                    updatedUtc = now,
+                )
             )
-        )
+        } else {
+            database.placeDao().upsert(
+                existingNearbyPlace.copy(
+                    active = true,
+                    updatedUtc = now,
+                )
+            )
+        }
 
         database.staySegmentDao().upsert(
             StaySegmentEntity(
@@ -459,6 +513,7 @@ class TrackerRepository(
         private const val ENRICHMENT_RETRY_BATCH_SIZE = 25
         private const val PLACE_BACKFILL_CAPTURE_LIMIT = 48
         private const val PLACE_ADDRESS_BACKFILL_RADIUS_METERS = 250.0
+        private const val PLACE_REUSE_RADIUS_METERS = 250.0
     }
 
     private suspend fun ensureDemoPlaceAndVisit(now: String) {

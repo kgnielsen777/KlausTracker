@@ -54,6 +54,17 @@ interface CapturePointDao {
     @Query("UPDATE capture_points SET enrichment_status = :status WHERE id = :capturePointId")
     suspend fun updateEnrichmentStatus(capturePointId: String, status: String)
 
+        @Query(
+                """
+                UPDATE capture_points
+                SET motion_state = 'stay_candidate'
+                WHERE motion_state = 'unknown'
+                    AND speed_kmh IS NULL
+                    AND source = 'fused'
+                """
+        )
+        suspend fun backfillUnknownMotionForMissingSpeed(): Int
+
     @Query("DELETE FROM capture_points WHERE id = :capturePointId")
     suspend fun deleteById(capturePointId: String)
 }
